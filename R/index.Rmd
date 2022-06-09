@@ -1,0 +1,615 @@
+---
+title: "Causal inference with competing events"
+output: 
+  html_document:
+    date: "`r Sys.Date()`"
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(tidyverse)
+```
+
+## Setup
+
+- Load the required packages
+
+```{r, }
+library(Hmisc)
+library(splines)
+library(here)
+```
+
+- Download the data
+
+The example dataset is Byar & Greene prostate cancer data, downloaded from the following [website](https://hbiostat.org/data/). Data dictionary available [here](https://hbiostat.org/data/repo/Cprostate.html)
+
+```{r}
+prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
+```
+
+- Load utility functions
+
+```{r}
+source(here::here("R", "utility_functions.R"))
+```
+
+### Data cleaning
+
+- Create a binary variable to indicate all-cause death
+
+```{r}
+prostate$allCause <- prostate$status != "alive"
+```
+
+- Create a variable with 3 levels indicating the cause of death 
+
+```{r}
+# prostate$eventType <- prostate$status
+# 
+# levels(prostate$eventType) <- list(alive="alive",pdeath="dead - prostatic ca",odeath = 
+#                                      c(levels(prostate$eventType)[c(2:5,7:10)]))
+prostate <- prostate %>% 
+  mutate(eventType = case_when(status == "alive" ~ 0,
+                      status == "dead - prostatic ca" ~ 1,
+                      TRUE ~ 2))
+```
+
+- Filter data to only include high dose DES (A=1) and placebo (A=0)
+
+```{r}
+prostate$rx <- as.factor(prostate$rx)
+prostRed <- prostate[prostate$rx %in% levels(prostate$rx)[3:4],]
+prostRed$temprx = as.integer(prostRed$rx)-3 
+prostRed$rx=abs(1-prostRed$temprx) ## DES is A=1 and placebo A=0
+# prostRed$eventType = as.integer(prostRed$eventType)-1 #0 is censoring, 1 is pdeath, 2 is odeath
+prostRed$hgBinary <- prostRed$hg < 12
+prostRed$ageCat <- cut2(prostRed$age,c(0,60,70,80,100))
+prostRed$normalAct <- prostRed$pf == "normal activity"
+prostRed$eventCens <- prostRed$eventType == 0
+prostRed$eventProst <- prostRed$eventType == 1
+prostRed$Tstart = -0.01 #Needed for the long format
+
+```
+
+- Descriptive information
+
+```{r}
+table(prostRed$eventType, prostRed$rx)
+```
+
+### Convert data to long format
+
+```{r}
+cutTimes <- c(0:59)
+
+longProstRed <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "allCause"
+  )
+
+longProstRedCens <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "eventCens"
+  )
+
+longProstRed$eventCens <- longProstRedCens$eventCens
+
+# Make column for prostate cancer mortality
+longProstRed$prostateDeath <-
+  longProstRed$allCause == 1 &  longProstRed$eventType == 1
+
+longProstRed$otherDeath <-
+  longProstRed$allCause == 1 & longProstRed$eventType == 2
+
+```
+
+To be sure that right risk sets are used in models for this data structure without explicit conditioning, set "future values" of D and Y to missing on a given line if C=1 on that line and set future values of Y to missing on a line if D=1 on that line (respects "order" C,D,Y in each interval) -- nonissue when there are no "ties" but with month long intervals there might be.
+
+```{r}
+longProstRed$prostateDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] <- NA
+```
+
+Restrict input data set to records with dtime<K+1 for fitting pooled over time models
+
+```{r}
+longProstRed <- longProstRed[longProstRed$dtime < length(cutTimes), ]
+```
+
+Create 'baseline' - data collected at visit 0
+
+```{r}
+baseline <- longProstRed[longProstRed$dtime == 0, ]
+```
+
+Save number of subjects
+
+```{r}
+n <- length(unique(longProstRed$patno))
+```
+
+### Construction of weights
+
+- Fit conditional pooled logistic regression models for:
+
+```{r}
+plrFitP <-
+  glm(
+    prostateDeath ~ rx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary ,
+    data = longProstRed,
+    family = binomial()
+  )
+
+plrFitO <-
+  glm(
+    otherDeath ~ dtime + I(dtime ^ 2) + normalAct + ageCat + hx + hgBinary + rx ,
+    data = longProstRed,
+    family = binomial()
+  )
+
+temp50 <- longProstRed[longProstRed$dtime > 50,]
+
+plrFitC <-
+  glm(eventCens ~  normalAct + ageCat + hx + rx,
+      data = temp50,
+      family = binomial())
+
+```
+
+- Fit models for the numerators in the stabilized weights
+
+```{r}
+plrFitCnum <- glm(eventCens ~ rx , data = temp50, family = binomial())
+
+plrFitOnum <-
+  glm(otherDeath ~ dtime + I(dtime ^ 2) + rx,
+      data = longProstRed,
+      family = binomial())
+
+```
+
+- Create unstabilized and stabilized weights for censoring due to loss to follow-up
+
+```{r}
+### Denominator
+
+longProstRed$predC <-
+  rep(1, dim(longProstRed)[1]) # start by setting all to 1
+
+longProstRed$predC[longProstRed$dtime > 50] <-
+  1 - predict(plrFitC, newdata = temp50, type = 'response') #replace with model-based values for records with dtime>50
+
+### Numerator
+
+longProstRed$predCnum <-
+  rep(1, dim(longProstRed)[1])
+
+longProstRed$predCnum [longProstRed$dtime > 50] <-
+  1 - predict(plrFitCnum, newdata = temp50, type = 'response') #replace with model-based values for records with dtime>50
+
+predC <- longProstRed$predC
+
+predCnum <- longProstRed$predCnum
+
+cumPredC <-
+  unlist(aggregate(predC ~ longProstRed$patno, FUN = cumprod)$predC,
+         use.names = F) #unlist because aggregate creates list
+
+cumPredCnum <-
+  unlist(aggregate(predCnum ~ longProstRed$patno, FUN = cumprod)$predC,
+         use.names = F)
+
+### Unstabilized weights
+weights_te <- 1 / cumPredC
+
+### Stabilized weights
+
+weights_te_stab <- ipwEstimand_te_stab <- cumPredCnum / cumPredC
+```
+
+- Create unstabilized and stabilized weights for death as a censoring event
+
+```{r}
+
+### Denominator
+
+predO <-
+  1 - predict(plrFitO, newdata = longProstRed, type = 'response')
+
+cumPredO <-
+  unlist(aggregate(predO ~ longProstRed$patno, FUN = cumprod)$predO,
+         use.names = F) #unlist because aggregate creates list
+### Numerator
+
+predOnum <-
+  1 - predict(plrFitOnum, newdata = longProstRed, type = 'response')
+
+cumPredOnum <-
+  unlist(aggregate(predOnum ~ longProstRed$patno, FUN = cumprod)$predO,
+         use.names = F) 
+
+weights_de <- 1 / cumPredC * 1 / cumPredO
+
+weights_de_stab <-
+  cumPredCnum / cumPredC * cumPredOnum / cumPredO
+```
+
+- Assess weights
+
+```{r}
+summary(weights_te)
+
+summary(weights_de)
+
+summary(weights_te_stab)
+
+summary(weights_de_stab)
+```
+
+## Direct effect
+
+```{r}
+
+### Calculate cumulative hazards and cumulative incidence for the treated arm
+
+#### Unstabilized
+Treated_de_hazardP <-
+  nonParametricCumHaz(
+    weights_de,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE
+  )
+
+Treated_de_hazardO <- rep(0, length.out = (length(cutTimes)))
+
+cumIncTreated_de <-
+  nonParametricCumInc(Treated_de_hazardP, Treated_de_hazardO)
+
+#### Stabilized
+Treated_de_hazardPs <-
+  nonParametricCumHaz(
+    weights_de_stab,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE
+  )
+
+Treated_de_hazardOs <- rep(0, length.out = (length(cutTimes)))
+
+cumIncTreated_des <-
+  nonParametricCumInc(Treated_de_hazardPs, Treated_de_hazardOs)
+
+### Calculate cumulative hazards and cumulative incidence for the placebo arm
+
+#### Unstabilized
+
+Placebo_de_hazardP <-
+  nonParametricCumHaz(
+    weights_de,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE
+  )
+
+Placebo_de_hazardO <- rep(0, length.out = (length(cutTimes)))
+
+cumIncPlacebo_de <-
+  nonParametricCumInc(Placebo_de_hazardP, Placebo_de_hazardO)
+
+#### Stabilized
+
+Placebo_de_hazardPs <-
+  nonParametricCumHaz(
+    weights_de_stab,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE
+  )
+
+Placebo_de_hazardOs <- rep(0, length.out = (length(cutTimes)))
+
+cumIncPlacebo_des <-
+  nonParametricCumInc(Placebo_de_hazardPs, Placebo_de_hazardOs)
+
+### Calculate risk difference and risk ratio
+
+de_rr <-
+  cumIncTreated_de[length(cutTimes)] / cumIncPlacebo_de[length(cutTimes)]
+
+de_rd <-
+  cumIncTreated_de[length(cutTimes)] - cumIncPlacebo_de[length(cutTimes)]
+
+print(de_rr)
+
+print(de_rd)
+
+```
+
+## Total effect
+
+```{r}
+
+### Calculate cumulative hazards and cumulative incidence for the treated arm
+
+#### Unstabilized
+
+Treated_te_hazardP <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE
+  )
+
+Treated_te_hazardO <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = FALSE
+  )
+
+cumIncTreated_te <-
+  nonParametricCumInc(Treated_te_hazardP, Treated_te_hazardO)
+
+### Calculate cumulative hazards and cumulative incidence for the placebo arm
+
+#### Unstabilized
+
+Placebo_te_hazardP <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE
+  )
+
+Placebo_te_hazardO <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = FALSE
+  )
+
+cumIncPlacebo_te <-
+  nonParametricCumInc(Placebo_te_hazardP, Placebo_te_hazardO)
+
+### Calculate risk difference and risk ratio
+
+te_rr <-
+  cumIncTreated_te[length(cutTimes)] / cumIncPlacebo_te[length(cutTimes)]
+
+te_rd <-
+  cumIncTreated_te[length(cutTimes)] - cumIncPlacebo_te[length(cutTimes)]
+
+print(te_rr)
+print(te_rd)
+```
+
+## Total effect on death for other causes
+
+```{r}
+cumIncTreated_te_comp <-
+  nonParametricCumInc(Treated_te_hazardO, Treated_te_hazardP, competing = TRUE)
+
+cumIncPlacebo_te_comp <-
+  nonParametricCumInc(Placebo_te_hazardO, Placebo_te_hazardP, competing = TRUE)
+
+te_comp_rr <-
+  cumIncTreated_te_comp[length(cutTimes)] / cumIncPlacebo_te_comp[length(cutTimes)]
+
+te_comp_rd <-
+  cumIncTreated_te_comp[length(cutTimes)] - cumIncPlacebo_te_comp[length(cutTimes)]
+
+print(te_comp_rr)
+
+print(te_comp_rd)
+```
+
+## Separable effects
+
+- Convert data to long format, up to 100 months
+
+```{r}
+cutTimes <- c(0:100)
+
+longProstRed <-
+    survSplit(
+      data = prostRed,
+      cut = cutTimes,
+      start = "Tstart",
+      end = "dtime",
+      event = "allCause"
+    )
+
+longProstRedCens <-
+    survSplit(
+      data = prostRed,
+      cut = cutTimes,
+      start = "Tstart",
+      end = "dtime",
+      event = "eventCens"
+    )
+
+longProstRed$eventCens <- longProstRedCens$eventCens
+```
+
+- Make column for prostate cancer mortality
+
+```{r}
+longProstRed$prostateDeath <-
+  longProstRed$allCause == 1 & longProstRed$eventType == 1
+
+longProstRed$otherDeath <-
+  longProstRed$allCause == 1 & longProstRed$eventType == 2
+```
+
+```{r}
+n <- length(unique(longProstRed$patno))
+```
+  
+- Create 'baseline' - data collected at visit 0
+
+```{r}
+baseline <- longProstRed[longProstRed$dtime == 0,]
+```
+
+- Make copies of rx to be used in the hazard of other death
+
+```{r}
+longProstRed$Orx <- longProstRed$rx
+```
+
+```{r}
+plrFitP <-
+    glm(
+      prostateDeath ~ rx*(dtime + I(dtime ^ 2)+ I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+      data = longProstRed,
+      family = binomial()
+    )
+    
+plrFitO <-
+  glm(
+    otherDeath ~ Orx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+    data = longProstRed,
+    family = binomial()
+  )
+```
+  
+- Create simulated data where everyone is treated 
+
+Expand baseline so it contains a visit at each time point for every individual and where the baseline information has been carried forward at each time
+
+```{r}
+treated <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+
+treated$dtime <- rep(cutTimes, n)
+  
+treated$rx <- 0
+
+treated$Orx <- 0
+  
+treated$hazardP <-
+    predict(plrFitP, newdata = treated, type = 'response')
+  
+treated$hazardO <-
+    predict(plrFitO, newdata = treated, type = 'response')
+  
+treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
+
+sum(treated$hazardO < 0)
+```
+
+
+- Make analogous dataset for placebo
+
+```{r}
+placebo <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+  
+placebo$dtime <- rep(cutTimes, n)
+
+placebo$rx <- 1
+
+placebo$Orx <- 1
+
+# Turn into conditional risk of event in each time interval
+placebo$hazardP <-
+    predict(plrFitP, newdata = placebo, type = 'response')
+
+placebo$hazardO <-
+    predict(plrFitO, newdata = placebo, type = 'response')
+
+placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
+  
+```
+
+- Make analogous dataset for Ay=0, Ad=1
+
+```{r}
+treatAy <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+  
+treatAy$dtime <- rep(cutTimes, n)
+  
+treatAy$rx <- 0
+  
+treatAy$Orx <- 1
+
+# Turn into conditional risk of event in each time interval
+
+treatAy$hazardP <-
+    predict(plrFitP, newdata = treatAy, type = 'response')
+  
+treatAy$hazardO <-
+    predict(plrFitO, newdata = treatAy, type = 'response')
+  
+treatAy$s <- (1 - treatAy$hazardP) * (1 - treatAy$hazardO)
+
+```
+
+- Calculate cumulative incidence for each estimand
+
+```{r}
+cumIncTreated <- calculateCumInc(treated)
+cumIncTreatAy <- calculateCumInc(treatAy)
+cumIncPlacebo <- calculateCumInc(placebo)
+
+estimatesFullData <-
+  data.frame(cumIncTreated, cumIncTreatAy, cumIncPlacebo)
+```
+
+- Cumulative incidence curves
+
+```{r}
+riskTreated <- estimatesFullData$cumIncTreated
+riskTreatAy <- estimatesFullData$cumIncTreatAy
+riskPlacebo <- estimatesFullData$cumIncPlacebo
+
+plot(cutTimes, riskTreated, type = "s",
+     ylim = c(0, 1), ylab = "Cumulative incidence",
+     xlab = "Months", 
+     lty = 1, lwd = 1, xlim = c(0, 52))
+
+lines(cutTimes, riskPlacebo, type = "s",
+      col = 2, ylim = c(0, 1), lwd = 1)
+
+lines(cutTimes, riskTreatAy, type = "s",
+      col = 3, ylim = c(0, 1), lwd = 1)
+
+legend(x = 0, y = 1, 
+       c("(Ay=1,Ad=1)", "(Ay=1,Ad=0)", "(Ay=0,Ad=0)"),
+       bty = "n", col = c(1, 3, 2),
+       lty = c(1, 1, 1), cex = 1, pt.cex = 1, lwd = 1)
+```
+
+## References
+
+- Young JG, Stensrud MJ, Tchetgen Tchetgen EJ, Hernán MA. A causal framework for classical statistical estimands in failure time settings with competing events. Statistics in Medicine 2020. [Paper link](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471) [Code](https://github.com/CausalInference/CompetingEvents_Young_SIM_2020)
+
+- Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable Effects for Causal Inference in the Presence of Competing Events. Journal of the American Statistical Association 2022. [Paper link](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
+
+
+
