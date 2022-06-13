@@ -19,4 +19,7 @@ July 15, 2022
 
 ## Repository content
 
-- 
+- `R` folder: Includes R scripts and data 
+
+  - [Code](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
+
