@@ -12,7 +12,7 @@ June 14, 2022
 July 15, 2022
 10:00 – 2:00pm MT
 
-### Instructor:
+### Instructors:
 - Jessica Young
 - Mats Stensrud
 - L. Paloma Rojas-Saunero
