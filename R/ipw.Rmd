@@ -1,0 +1,453 @@
+---
+title: "ipw"
+output: html_document
+date: "2023-05-31"
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(Hmisc)
+library(splines)
+library(here)
+source(here::here("R", "utility_functions.R"))
+
+prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
+prostate$allCause <- prostate$status != "alive"
+prostate$eventType <- as.factor(prostate$status)
+
+levels(prostate$eventType) <-
+  list(alive = "alive",
+       pdeath = "dead - prostatic ca",
+       odeath = c(levels(prostate$eventType)[c(2:5, 7:10)]))
+
+prostate$rx <- as.factor(prostate$rx)
+prostRed <- prostate[prostate$rx %in% levels(prostate$rx)[3:4], ]
+prostRed$temprx = as.integer(prostRed$rx) - 3
+prostRed$rx = abs(1 - prostRed$temprx) # DES is A=1 and placebo A=0
+prostRed$eventType = as.integer(prostRed$eventType) - 1 #0 is censoring, 1 is pdeath, 2 is odeath
+prostRed$hgBinary <- prostRed$hg < 12
+prostRed$ageCat <- cut2(prostRed$age, c(0, 60, 70, 80, 100))
+prostRed$normalAct <- prostRed$pf == "normal activity"
+prostRed$eventCens <- prostRed$eventType == 0
+prostRed$eventProst <- prostRed$eventType == 1
+prostRed$Tstart = -0.01 #Needed for the long format
+cutTimes <- c(0:59)
+
+longProstRed <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "allCause")
+
+longProstRedCens <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "eventCens")
+
+longProstRed$eventCens <- longProstRedCens$eventCens
+
+longProstRed$prostateDeath <-
+  longProstRed$allCause == 1 &  longProstRed$eventType == 1
+
+longProstRed$otherDeath <-
+  longProstRed$allCause == 1 & longProstRed$eventType == 2
+
+longProstRed$prostateDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] <- NA
+
+longProstRed <- longProstRed[longProstRed$dtime < length(cutTimes), ]
+
+baseline <- longProstRed[longProstRed$dtime == 0, ]
+
+n <- length(unique(longProstRed$patno))
+
+```
+
+
+### Computation of IPC weights
+
+- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and for censoring.  
+
+```{r}
+### Pooled logistic regression for prostate cancer death (this will be needed in the next section)
+plrFitP <-
+  glm(
+    prostateDeath ~ rx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary ,
+    data = longProstRed,
+    family = binomial())
+
+### Pooled logistic regression for death due to other causes
+
+plrFitO <-
+  glm(
+    otherDeath ~ dtime + I(dtime ^ 2) + normalAct + ageCat + hx + hgBinary + rx ,
+    data = longProstRed,
+    family = binomial())
+
+
+### Pooled logistic regression for censoring after time 50
+
+temp50 <- longProstRed[longProstRed$dtime > 50,]
+
+plrFitC <-
+  glm(eventCens ~  normalAct + ageCat + hx + rx,
+      data = temp50,
+      family = binomial())
+
+```
+
+- Fit models for the numerators in the stabilized weights
+
+```{r}
+plrFitCnum <-
+  glm(eventCens ~ rx , data = temp50, family = binomial())
+
+plrFitOnum <-
+  glm(otherDeath ~ dtime + I(dtime ^ 2) + rx,
+      data = longProstRed,
+      family = binomial())
+
+```
+
+- Calculate weights for censoring due to loss to follow-up
+
+```{r}
+### Denominator
+
+longProstRed$predC <-
+  rep(1, dim(longProstRed)[1]) # The probability of *not* being censored is 1 for all t <= 50
+
+longProstRed$predC[longProstRed$dtime > 50] <- # update this probability from time 50 and onwards
+  1 - predict(plrFitC, newdata = temp50, type = 'response')
+
+### Numerator
+
+longProstRed$predCnum <-
+  rep(1, dim(longProstRed)[1])
+
+longProstRed$predCnum [longProstRed$dtime > 50] <-
+  1 - predict(plrFitCnum, newdata = temp50, type = 'response') 
+
+predC <- longProstRed$predC
+
+predCnum <- longProstRed$predCnum
+
+cumPredC <-
+  unlist(aggregate(predC ~ longProstRed$patno, FUN = cumprod)$predC,
+         use.names = F)
+
+cumPredCnum <-
+  unlist(aggregate(predCnum ~ longProstRed$patno, FUN = cumprod)$predC,
+         use.names = F)
+
+### Unstabilized weights
+weights_te <- 1 / cumPredC
+
+### Stabilized weights
+
+weights_te_stab <- ipwEstimand_te_stab <- cumPredCnum / cumPredC
+```
+
+- Calculate unstabilized and stabilized weights for death from other causes
+
+```{r}
+
+### Denominator
+
+predO <-
+  1 - predict(plrFitO, newdata = longProstRed, type = 'response')
+
+cumPredO <-
+  unlist(aggregate(predO ~ longProstRed$patno, FUN = cumprod)$predO,
+         use.names = F)
+
+### Numerator
+
+predOnum <-
+  1 - predict(plrFitOnum, newdata = longProstRed, type = 'response')
+
+cumPredOnum <-
+  unlist(aggregate(predOnum ~ longProstRed$patno, FUN = cumprod)$predO,
+         use.names = F) 
+
+weights_de <- 1 / cumPredC * 1 / cumPredO
+
+weights_de_stab <-
+  cumPredCnum / cumPredC * cumPredOnum / cumPredO
+```
+
+- Assess weights
+
+```{r}
+summary(weights_te)
+
+summary(weights_de)
+
+summary(weights_te_stab)
+
+summary(weights_de_stab)
+```
+
+## Direct effect
+
+Following equation (37) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
+
+```{r}
+
+### Calculate cumulative hazards and cumulative incidence for the treated arm
+
+#### Unstabilized
+Treated_de_hazardP <-
+  nonParametricCumHaz(
+    weights_de,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE)
+
+Treated_de_hazardO <- rep(0, length.out = (length(cutTimes)))
+
+cumIncTreated_de <-
+  nonParametricCumInc(Treated_de_hazardP, Treated_de_hazardO)
+
+#### Stabilized
+Treated_de_hazardPs <-
+  nonParametricCumHaz(
+    weights_de_stab,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE)
+
+Treated_de_hazardOs <- rep(0, length.out = (length(cutTimes)))
+
+cumIncTreated_des <-
+  nonParametricCumInc(Treated_de_hazardPs, Treated_de_hazardOs)
+
+### Calculate cumulative hazards and cumulative incidence for the placebo arm
+
+#### Unstabilized
+
+Placebo_de_hazardP <-
+  nonParametricCumHaz(
+    weights_de,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE
+  )
+
+Placebo_de_hazardO <- rep(0, length.out = (length(cutTimes)))
+
+cumIncPlacebo_de <-
+  nonParametricCumInc(Placebo_de_hazardP, Placebo_de_hazardO)
+
+#### Stabilized
+
+Placebo_de_hazardPs <-
+  nonParametricCumHaz(
+    weights_de_stab,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE
+  )
+
+Placebo_de_hazardOs <- rep(0, length.out = (length(cutTimes)))
+
+cumIncPlacebo_des <-
+  nonParametricCumInc(Placebo_de_hazardPs, Placebo_de_hazardOs)
+
+```
+
+- Risks at 60 months of follow-up, risk difference and risk ratio
+
+
+```{r}
+cumIncTreated_de_60 <- cumIncTreated_de[length(cutTimes)] 
+
+cumIncPlacebo_de_60 <- cumIncPlacebo_de[length(cutTimes)]
+
+de_rr <- cumIncTreated_de_60 / cumIncPlacebo_de_60
+
+de_rd <- cumIncTreated_de_60 - cumIncPlacebo_de_60
+
+results_de <- data.frame(cumIncTreated_de_60, cumIncPlacebo_de_60, de_rr, de_rd)
+
+knitr::kable(round(results_de, 2)) 
+```
+
+- Cumulative incidence curves
+
+```{r}
+plot(
+  cutTimes, cumIncTreated_de, type = "s",
+  ylim = c(0, 1), ylab = "Risk", xlab = "Month",
+  lty = 1, lwd = 1, xlim = c(0, 60),
+  cex.lab = 1.2, cex.main = 1.2,
+  main = c(
+    paste("Risk of prostate cancer death"),
+    paste("under elimination of competing events")
+  )
+)
+lines(
+  cutTimes,
+  cumIncPlacebo_de,
+  type = "s", col = 2, ylim = c(0, 1), lwd = 1)
+
+legend(
+  "topleft", c("Treatment", "Placebo"),
+  col = c(1, 2, 1, 2),
+  lty = c(1, 1, 2, 2),
+  cex = 1.2, pt.cex = 1.2, lwd = 2)
+```
+
+## Total effect
+
+Following equation (40) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
+
+```{r}
+
+### Calculate cumulative hazards and cumulative incidence for the treated arm
+
+#### Unstabilized
+
+Treated_te_hazardP <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = TRUE)
+
+Treated_te_hazardO <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 1,
+    outcomeProstate = FALSE)
+
+cumIncTreated_te <-
+  nonParametricCumInc(Treated_te_hazardP, Treated_te_hazardO)
+
+### Calculate cumulative hazards and cumulative incidence for the placebo arm
+
+#### Unstabilized
+
+Placebo_te_hazardP <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = TRUE)
+
+Placebo_te_hazardO <-
+  nonParametricCumHaz(
+    weights_te,
+    inputdata = longProstRed,
+    grp = 0,
+    outcomeProstate = FALSE)
+
+cumIncPlacebo_te <-
+  nonParametricCumInc(Placebo_te_hazardP, Placebo_te_hazardO)
+
+```
+
+- Risks at 60 months of follow-up, risk difference and risk ratio
+
+
+```{r}
+cumIncTreated_te_60 <- cumIncTreated_te[length(cutTimes)] 
+
+cumIncPlacebo_te_60 <- cumIncPlacebo_te[length(cutTimes)]
+
+te_rr <- cumIncTreated_te_60 / cumIncPlacebo_te_60
+
+te_rd <- cumIncTreated_te_60 - cumIncPlacebo_te_60
+
+results_te <- data.frame(cumIncTreated_te_60, cumIncPlacebo_te_60, te_rr, te_rd)
+
+knitr::kable(round(results_te, 2))
+```
+
+- Cumulative incidence curves
+
+```{r}
+plot(
+  cutTimes, cumIncTreated_te, type = "s",
+  ylim = c(0, 1), ylab = "Risk", xlab = "Month",
+  lty = 1, lwd = 1, xlim = c(0, 60),
+  cex.lab = 1.2, cex.main = 1.2,
+  main = c(
+    paste("Risk of prostate cancer death"),
+    paste("without elimination of competing events")
+  )
+)
+lines(
+  cutTimes,
+  cumIncPlacebo_te,
+  type = "s", col = 2, ylim = c(0, 1), lwd = 1)
+
+legend(
+  "topleft", c("Treatment", "Placebo"),
+  col = c(1, 2, 1, 2), lty = c(1, 1, 2, 2),
+  cex = 1.2, pt.cex = 1.2, lwd = 2)
+
+```
+
+## Total effect on death for other causes
+
+```{r}
+cumIncTreated_te_comp <-
+  nonParametricCumInc(Treated_te_hazardO, Treated_te_hazardP, competing = TRUE)
+
+cumIncPlacebo_te_comp <-
+  nonParametricCumInc(Placebo_te_hazardO, Placebo_te_hazardP, competing = TRUE)
+
+```
+
+```{r}
+cumIncTreated_te_comp_60 <- cumIncTreated_te_comp[length(cutTimes)] 
+
+cumIncPlacebo_te_comp_60 <- cumIncPlacebo_te_comp[length(cutTimes)]
+
+te_comp_rr <- cumIncTreated_te_comp_60 / cumIncPlacebo_te_comp_60
+
+te_comp_rd <- cumIncTreated_te_comp_60 - cumIncPlacebo_te_comp_60
+
+results_te_comp <- data.frame(cumIncTreated_te_comp_60, cumIncPlacebo_te_comp_60, te_comp_rr, te_comp_rd)
+
+knitr::kable(round(results_te_comp, 2))
+
+```
+
+- Cumulative incidence curves
+
+```{r}
+plot(
+  cutTimes,
+  cumIncTreated_te_comp, type = "s",
+  ylim = c(0, 1), ylab = "Risk", xlab = "Month",
+  lty = 1, lwd = 1, xlim = c(0, 60),
+  cex.lab = 1.2, cex.main = 1.2,
+  main = c(
+    paste("Risk of other causes of death (the competing event)")
+  ))
+
+lines(
+  cutTimes,
+  cumIncPlacebo_te_comp,
+  type = "s", col = 2, ylim = c(0, 1), lwd = 1)
+
+legend(
+  "topleft", c("Treatment", "Placebo"),
+  col = c(1, 2, 1, 2), lty = c(1, 1, 2, 2),
+  cex = 1.2, pt.cex = 1.2, lwd = 2)
+
+```
+
+## Separable effects

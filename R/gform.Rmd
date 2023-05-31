@@ -1,0 +1,319 @@
+---
+title: "gform"
+output: html_document
+date: "2023-05-31"
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(Hmisc)
+library(splines)
+library(here)
+source(here::here("R", "utility_functions.R"))
+
+prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
+prostate$allCause <- prostate$status != "alive"
+prostate$eventType <- as.factor(prostate$status)
+
+levels(prostate$eventType) <-
+  list(alive = "alive",
+       pdeath = "dead - prostatic ca",
+       odeath = c(levels(prostate$eventType)[c(2:5, 7:10)]))
+
+prostate$rx <- as.factor(prostate$rx)
+prostRed <- prostate[prostate$rx %in% levels(prostate$rx)[3:4], ]
+prostRed$temprx = as.integer(prostRed$rx) - 3
+prostRed$rx = abs(1 - prostRed$temprx) # DES is A=1 and placebo A=0
+prostRed$eventType = as.integer(prostRed$eventType) - 1 #0 is censoring, 1 is pdeath, 2 is odeath
+prostRed$hgBinary <- prostRed$hg < 12
+prostRed$ageCat <- cut2(prostRed$age, c(0, 60, 70, 80, 100))
+prostRed$normalAct <- prostRed$pf == "normal activity"
+prostRed$eventCens <- prostRed$eventType == 0
+prostRed$eventProst <- prostRed$eventType == 1
+prostRed$Tstart = -0.01 #Needed for the long format
+cutTimes <- c(0:59)
+
+longProstRed <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "allCause")
+
+longProstRedCens <-
+  survSplit(
+    data = prostRed,
+    cut = cutTimes,
+    start = "Tstart",
+    end = "dtime",
+    event = "eventCens")
+
+longProstRed$eventCens <- longProstRedCens$eventCens
+
+longProstRed$prostateDeath <-
+  longProstRed$allCause == 1 &  longProstRed$eventType == 1
+
+longProstRed$otherDeath <-
+  longProstRed$allCause == 1 & longProstRed$eventType == 2
+
+longProstRed$prostateDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] <- NA
+
+longProstRed <- longProstRed[longProstRed$dtime < length(cutTimes), ]
+
+baseline <- longProstRed[longProstRed$dtime == 0, ]
+
+n <- length(unique(longProstRed$patno))
+
+```
+
+
+
+# G-formula
+
+Create expanded data so that hazards given A=1 can be computed for all subjects (even those with A=0) -- note in an RCT this is not necessary, could stratify models above and this step by treatment arm
+
+Expand baseline so it contains a visit at each time point for every individual where the baseline information has been carried forward at each time
+
+
+```{r}
+plrFitP <-
+  glm(
+    prostateDeath ~ rx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary ,
+    data = longProstRed,
+    family = binomial())
+
+### Pooled logistic regression for death due to other causes
+
+plrFitO <-
+  glm(
+    otherDeath ~ dtime + I(dtime ^ 2) + normalAct + ageCat + hx + hgBinary + rx ,
+    data = longProstRed,
+    family = binomial())
+
+```
+
+## Direct effect
+
+Dataset construction where A = 1
+```{r}
+treated <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each interval k+1 for k=0,...,K
+treated$dtime <- rep(cutTimes,n)
+treated$rx <-1 
+
+# Estimate conditional discrete hazards (cause specific for each cause of death/competing event conditioned for event and hazard of competing event) for each subject in each time interval
+treated$hazardP <- predict(plrFitP, newdata = treated, type = 'response') 
+treated$hazardO <- 0
+treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
+# sum(treated$hazardO < 0) sanity check
+
+```
+
+
+Dataset construction where A = 0
+```{r}
+# Make analogous dataset for placebo
+placebo <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each time
+placebo$dtime <- rep(cutTimes,n)
+placebo$rx <- 0 
+
+
+# Estimate conditional discrete hazard for each subject in each time interval
+placebo$hazardP <- predict(plrFitP, newdata = placebo, type = 'response') 
+placebo$hazardO <- 0
+placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
+```
+
+```{r}
+#parametric g-formula estimate of risk under elimination of competing events
+cumIncTreated <- calculateCumInc(treated)#a=1
+cumIncPlacebo <- calculateCumInc(placebo)#a=0
+#gcomp estimate of the controlled direct effect
+gcompcderr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] #JGY need ci's on this
+gcompcderd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)] #JGY need ci's on this
+print(gcompcderr)
+print(gcompcderd)
+```
+
+## Total effect
+
+We are going to use the same code as in the previous section, except that in this case instead of fixing the hazard of other causes to death as 0, we are going to calculate hazards for this outcome, fit from the `plrfit0` model and recalculate the survival probability, given death
+
+For A = 1
+```{r}
+treated$hazardO <- predict(plrFitO, newdata = treated, type = 'response')
+
+treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
+
+```
+
+For A = 0
+
+```{r}
+placebo$hazardO <- predict(plrFitO, newdata = placebo, type = 'response')
+
+placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
+```
+
+```{r}
+###### Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula 
+###########
+#parametric g-formula estimate of risk without elimination of competing events
+cumIncTreated <- calculateCumInc(treated)#a=1
+cumIncPlacebo <- calculateCumInc(placebo)#a=0
+
+#parametric g-formula estimate of the total effect
+gcomptotrr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] 
+gcomptotrd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)]
+print(gcomptotrr)
+print(gcomptotrd)
+```
+## Total effect of death on other causes
+
+```{r}
+# parametric g-formula estimate of the risk of the competing event itself
+cumIncTreatedcomp <- calculateCumInc(treated, competing = TRUE)#a=1
+cumIncPlacebocomp <- calculateCumInc(placebo, competing = TRUE)#a=0
+#(Total) effect on risk of competing event
+gcompcomprr<-cumIncTreatedcomp[length(cutTimes)]/cumIncPlacebocomp[length(cutTimes)] #JGY need ci's on this
+gcompcomprd<-cumIncTreatedcomp[length(cutTimes)]-cumIncPlacebocomp[length(cutTimes)] #JGY need ci's on this
+print(gcompcomprr)
+print(gcompcomprd)
+```
+## Separable effects
+
+Following equation (9) from [Stensrud et al. Journal of the American Statistical Association. 2020](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
+
+To this matter, we will use the long format data set prepared before: `longProstRed`. 
+
+- Make copies of rx to be used in the hazard of other death
+
+```{r}
+longProstRed$Orx <- longProstRed$rx
+```
+
+- Fit conditional pooled logistic regression models
+
+```{r}
+plrFitP <-
+    glm(
+      prostateDeath ~ rx*(dtime + I(dtime ^ 2)+ I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+      data = longProstRed,
+      family = binomial()
+    )
+    
+plrFitO <-
+  glm(
+    otherDeath ~ Orx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+    data = longProstRed,
+    family = binomial()
+  )
+```
+  
+- Create simulated data where everyone is treated 
+
+Expand baseline so it contains a visit at each time point for every individual and where the baseline information has been carried forward at each time
+
+```{r}
+treated <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+
+treated$dtime <- rep(cutTimes, n)
+  
+treated$rx <- 1
+
+treated$Orx <- 1
+  
+treated$hazardP <-
+    predict(plrFitP, newdata = treated, type = 'response')
+  
+treated$hazardO <-
+    predict(plrFitO, newdata = treated, type = 'response')
+  
+treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
+
+sum(treated$hazardO < 0)
+```
+
+- Make analogous dataset for placebo
+
+```{r}
+placebo <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+  
+placebo$dtime <- rep(cutTimes, n)
+
+placebo$rx <- 0
+
+placebo$Orx <- 0
+
+# Turn into conditional risk of event in each time interval
+placebo$hazardP <-
+    predict(plrFitP, newdata = placebo, type = 'response')
+
+placebo$hazardO <-
+    predict(plrFitO, newdata = placebo, type = 'response')
+
+placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
+  
+```
+
+- Make analogous dataset for Ay=1, Ad=0
+
+```{r}
+treatAy <-
+    baseline[rep(1:n, each = length(cutTimes)), ]
+  
+treatAy$dtime <- rep(cutTimes, n)
+  
+treatAy$rx <- 1
+  
+treatAy$Orx <- 0
+
+treatAy$hazardP <-
+    predict(plrFitP, newdata = treatAy, type = 'response')
+  
+treatAy$hazardO <-
+    predict(plrFitO, newdata = treatAy, type = 'response')
+  
+treatAy$s <- (1 - treatAy$hazardP) * (1 - treatAy$hazardO)
+
+```
+
+- Calculate cumulative incidence for each estimand
+
+```{r}
+cumIncTreated <- calculateCumInc(treated)
+cumIncTreatAy <- calculateCumInc(treatAy)
+cumIncPlacebo <- calculateCumInc(placebo)
+
+estimatesFullData <-
+  data.frame(cumIncTreated, cumIncTreatAy, cumIncPlacebo)
+
+knitr::kable(round(estimatesFullData[36,], 2))
+```
+
+- Cumulative incidence curves
+
+```{r}
+plot(cutTimes, cumIncTreated, type = "s",
+     ylim = c(0, 1), ylab = "Risk",
+     xlab = "Months", 
+     lty = 1, lwd = 1, xlim = c(0, 52))
+
+lines(cutTimes, cumIncPlacebo, type = "s",
+      col = 2, ylim = c(0, 1), lwd = 1)
+
+lines(cutTimes, cumIncTreatAy, type = "s",
+      col = 3, ylim = c(0, 1), lwd = 1)
+
+legend(x = 0, y = 1, 
+       c("(Ay=1,Ad=1)", "(Ay=1,Ad=0)", "(Ay=0,Ad=0)"),
+       bty = "n", col = c(1, 3, 2),
+       lty = c(1, 1, 1), cex = 1, pt.cex = 1, lwd = 1)
+```
