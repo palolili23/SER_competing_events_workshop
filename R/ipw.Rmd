@@ -1,10 +1,22 @@
 ---
-title: "ipw"
-output: html_document
-date: "2023-05-31"
+title: "Direct, total and separable effects, using inverse probability weighting (IPW)"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown:
+    code_folding: show
+    self_contained: true
+    thumbnails: false
+    lightbox: false
+editor_options: 
+  chunk_output_type: console
 ---
 
-```{r setup, include=FALSE, message = FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+```
+
+```{r, include=FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
 library(Hmisc)
@@ -73,9 +85,9 @@ n <- length(unique(longProstRed$patno))
 ```
 
 
-### Computation of IPC weights
+## Computation of IPC weights
 
-- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and for censoring.  
+- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and weights for censoring
 
 ```{r}
 ### Pooled logistic regression for prostate cancer death (this will be needed in the next section)
@@ -105,7 +117,7 @@ plrFitC <-
 
 ```
 
-- Fit models for the numerators in the stabilized weights
+- Fit models for the numerators in the stabilized weights corresponding to death due to other causes, and for censoring
 
 ```{r}
 plrFitCnum <-
@@ -140,7 +152,19 @@ longProstRed$predCnum [longProstRed$dtime > 50] <-
 predC <- longProstRed$predC
 
 predCnum <- longProstRed$predCnum
+```
 
+- Glimpse of data 
+
+```{r}
+longProstRed %>% 
+  filter(patno == 8) %>% slice(45:60) %>% 
+  select(patno, dtime, starts_with("pred")) %>% 
+  knitr::kable()
+```
+
+- Calculate the cumulative probability over time
+````{r}
 cumPredC <-
   unlist(aggregate(predC ~ longProstRed$patno, FUN = cumprod)$predC,
          use.names = F)
@@ -149,12 +173,59 @@ cumPredCnum <-
   unlist(aggregate(predCnum ~ longProstRed$patno, FUN = cumprod)$predC,
          use.names = F)
 
+```
+
+- Glimpse 
+```{r, echo = FALSE}
+longProstRed %>% 
+  mutate(cumPredC = cumPredC) %>% 
+    filter(patno == 8) %>% slice(45:60) %>% 
+  select(patno, dtime, starts_with("pred"), cumPredC) %>% 
+  knitr::kable()
+```
+
+- Calculate unstabilized and stabilized weights
+
+```{r}
+
 ### Unstabilized weights
 weights_te <- 1 / cumPredC
 
 ### Stabilized weights
 
 weights_te_stab <- ipwEstimand_te_stab <- cumPredCnum / cumPredC
+```
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredC = cumPredC,
+         weights_te = weights_te,
+         weights_te_stab = weights_te_stab) %>% 
+    filter(patno == 8) %>% slice(45:60) %>% 
+  select(patno, dtime, starts_with("pred"), cumPredC, starts_with("weig")) %>% 
+  knitr::kable()
+```
+
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredC = cumPredC,
+         weights_te = weights_te,
+         weights_te_stab = weights_te_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_te)) +
+  geom_boxplot() +
+  labs(title = "Unstabilized weights for censoring")
+```
+
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredC = cumPredC,
+         weights_te = weights_te,
+         weights_te_stab = weights_te_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_te_stab)) +
+  geom_boxplot() +
+  labs(title = "Unstabilized weights for censoring")
 ```
 
 - Calculate unstabilized and stabilized weights for death from other causes
@@ -166,19 +237,67 @@ weights_te_stab <- ipwEstimand_te_stab <- cumPredCnum / cumPredC
 predO <-
   1 - predict(plrFitO, newdata = longProstRed, type = 'response')
 
+### Numerator
+predOnum <-
+  1 - predict(plrFitOnum, newdata = longProstRed, type = 'response')
+
+### Calculate cumulative probability
+
 cumPredO <-
   unlist(aggregate(predO ~ longProstRed$patno, FUN = cumprod)$predO,
          use.names = F)
-
-### Numerator
-
-predOnum <-
-  1 - predict(plrFitOnum, newdata = longProstRed, type = 'response')
 
 cumPredOnum <-
   unlist(aggregate(predOnum ~ longProstRed$patno, FUN = cumprod)$predO,
          use.names = F) 
 
+### Weight calculation
+
+weights_de <- 1 / cumPredO
+
+weights_de_stab <-
+  cumPredOnum / cumPredO
+```
+
+- Glimpse of data
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredO = cumPredO,
+         cumPredOnum = cumPredOnum,
+         weights_de = weights_de,
+         weights_de_stab = weights_de_stab) %>% 
+    filter(patno == 487) %>% 
+  select(patno, dtime, cumPredO, cumPredOnum, starts_with("weig")) %>% 
+  knitr::kable()
+
+```
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredO = cumPredO,
+         cumPredOnum = cumPredOnum,
+         weights_de = weights_de,
+         weights_de_stab = weights_de_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_de)) +
+  geom_boxplot() +
+  labs(title = "Unstabilized weights for death of other causes")
+```
+
+```{r}
+longProstRed %>% 
+  mutate(cumPredO = cumPredO,
+         cumPredOnum = cumPredOnum,
+         weights_de = weights_de,
+         weights_de_stab = weights_de_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_de_stab)) +
+  geom_boxplot() +
+  labs(title = "Stabilized weights for death of other causes")
+```
+
+- Multiply weights for censoring and for death due to other causes
+
+```{r}
 weights_de <- 1 / cumPredC * 1 / cumPredO
 
 weights_de_stab <-
@@ -451,3 +570,8 @@ legend(
 ```
 
 ## Separable effects
+
+
+### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
+
+### [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/2022_ser_competing_events/R/gform.html)

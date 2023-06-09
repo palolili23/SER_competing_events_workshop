@@ -1,7 +1,13 @@
 ---
-title: "gform"
-output: html_document
-date: "2023-05-31"
+title: "Direct, total and separable effects, using G-formula"
+output: 
+  rmdformats::readthedown:
+    code_folding: show
+    self_contained: true
+    thumbnails: false
+    lightbox: false
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE, message = FALSE}
@@ -73,15 +79,16 @@ n <- length(unique(longProstRed$patno))
 ```
 
 
+## Create expanded datasets
 
-# G-formula
+Create expanded data so that hazards given A=1 can be computed for all subjects (even those with A=0). In an RCT this is not necessary, could stratify models above and this step by treatment arm.
 
-Create expanded data so that hazards given A=1 can be computed for all subjects (even those with A=0) -- note in an RCT this is not necessary, could stratify models above and this step by treatment arm
-
-Expand baseline so it contains a visit at each time point for every individual where the baseline information has been carried forward at each time
+Expand baseline so it contains a visit at each time point for every individual where the baseline information has been carried forward at each time.
 
 
 ```{r}
+### Pooled logistic regression for prostate cancer death
+
 plrFitP <-
   glm(
     prostateDeath ~ rx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary ,
@@ -105,15 +112,7 @@ Dataset construction where A = 1
 treated <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each interval k+1 for k=0,...,K
 treated$dtime <- rep(cutTimes,n)
 treated$rx <-1 
-
-# Estimate conditional discrete hazards (cause specific for each cause of death/competing event conditioned for event and hazard of competing event) for each subject in each time interval
-treated$hazardP <- predict(plrFitP, newdata = treated, type = 'response') 
-treated$hazardO <- 0
-treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
-# sum(treated$hazardO < 0) sanity check
-
 ```
-
 
 Dataset construction where A = 0
 ```{r}
@@ -121,21 +120,28 @@ Dataset construction where A = 0
 placebo <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each time
 placebo$dtime <- rep(cutTimes,n)
 placebo$rx <- 0 
+```
 
+Estimate conditional discrete hazards (cause specific for each cause of death/competing event conditioned for event and hazard of competing event) for each subject in each time interval in both cloned datasets
 
-# Estimate conditional discrete hazard for each subject in each time interval
+```{r}
+treated$hazardP <- predict(plrFitP, newdata = treated, type = 'response') 
+treated$hazardO <- 0
+treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
+
 placebo$hazardP <- predict(plrFitP, newdata = placebo, type = 'response') 
 placebo$hazardO <- 0
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 ```
 
+Parametric g-formula estimate of risk under elimination of competing events
+
 ```{r}
-#parametric g-formula estimate of risk under elimination of competing events
 cumIncTreated <- calculateCumInc(treated)#a=1
 cumIncPlacebo <- calculateCumInc(placebo)#a=0
-#gcomp estimate of the controlled direct effect
-gcompcderr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] #JGY need ci's on this
-gcompcderd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)] #JGY need ci's on this
+
+gcompcderr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] 
+gcompcderd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)] 
 print(gcompcderr)
 print(gcompcderd)
 ```
@@ -145,6 +151,7 @@ print(gcompcderd)
 We are going to use the same code as in the previous section, except that in this case instead of fixing the hazard of other causes to death as 0, we are going to calculate hazards for this outcome, fit from the `plrfit0` model and recalculate the survival probability, given death
 
 For A = 1
+
 ```{r}
 treated$hazardO <- predict(plrFitO, newdata = treated, type = 'response')
 
@@ -160,31 +167,37 @@ placebo$hazardO <- predict(plrFitO, newdata = placebo, type = 'response')
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 ```
 
+Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula
+
 ```{r}
-###### Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula 
-###########
-#parametric g-formula estimate of risk without elimination of competing events
 cumIncTreated <- calculateCumInc(treated)#a=1
 cumIncPlacebo <- calculateCumInc(placebo)#a=0
 
-#parametric g-formula estimate of the total effect
 gcomptotrr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] 
 gcomptotrd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)]
 print(gcomptotrr)
 print(gcomptotrd)
 ```
+
 ## Total effect of death on other causes
 
 ```{r}
 # parametric g-formula estimate of the risk of the competing event itself
 cumIncTreatedcomp <- calculateCumInc(treated, competing = TRUE)#a=1
+
 cumIncPlacebocomp <- calculateCumInc(placebo, competing = TRUE)#a=0
-#(Total) effect on risk of competing event
-gcompcomprr<-cumIncTreatedcomp[length(cutTimes)]/cumIncPlacebocomp[length(cutTimes)] #JGY need ci's on this
-gcompcomprd<-cumIncTreatedcomp[length(cutTimes)]-cumIncPlacebocomp[length(cutTimes)] #JGY need ci's on this
+
+gcompcomprr <-
+  cumIncTreatedcomp[length(cutTimes)] / cumIncPlacebocomp[length(cutTimes)]
+
+gcompcomprd <-
+  cumIncTreatedcomp[length(cutTimes)] - cumIncPlacebocomp[length(cutTimes)]
+
+
 print(gcompcomprr)
 print(gcompcomprd)
 ```
+
 ## Separable effects
 
 Following equation (9) from [Stensrud et al. Journal of the American Statistical Association. 2020](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
@@ -229,15 +242,6 @@ treated$rx <- 1
 
 treated$Orx <- 1
   
-treated$hazardP <-
-    predict(plrFitP, newdata = treated, type = 'response')
-  
-treated$hazardO <-
-    predict(plrFitO, newdata = treated, type = 'response')
-  
-treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
-
-sum(treated$hazardO < 0)
 ```
 
 - Make analogous dataset for placebo
@@ -252,7 +256,21 @@ placebo$rx <- 0
 
 placebo$Orx <- 0
 
-# Turn into conditional risk of event in each time interval
+```
+
+Turn into conditional risk of event in each time interval
+
+```{r}
+treated$hazardP <-
+    predict(plrFitP, newdata = treated, type = 'response')
+  
+treated$hazardO <-
+    predict(plrFitO, newdata = treated, type = 'response')
+  
+treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
+```
+
+```{r}
 placebo$hazardP <-
     predict(plrFitP, newdata = placebo, type = 'response')
 
@@ -260,7 +278,6 @@ placebo$hazardO <-
     predict(plrFitO, newdata = placebo, type = 'response')
 
 placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
-  
 ```
 
 - Make analogous dataset for Ay=1, Ad=0
@@ -317,3 +334,8 @@ legend(x = 0, y = 1,
        bty = "n", col = c(1, 3, 2),
        lty = c(1, 1, 1), cex = 1, pt.cex = 1, lwd = 1)
 ```
+
+
+### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
+
+### [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/2022_ser_competing_events/R/ipw.html)
