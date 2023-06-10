@@ -18,6 +18,8 @@ library(tidyverse)
 
 # Data cleaning and setup
 
+Note: Most of the code in this tutorial is written in R base, to mimic the original code from the published papers (see *References*). Dr. Elena Dudukina has a version of this code in R tidyverse [here](https://www.elenadudukina.com/post/competing-events/2022-11-24-competing-events/).
+
 ### Initial steps
 
 - Load the required packages
