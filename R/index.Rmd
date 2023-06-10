@@ -37,13 +37,16 @@ The example dataset is Byar & Greene prostate cancer data, downloaded from the f
 prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
 ```
 
-- Load utility functions, these are located in the github repository. [Link](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R)
+- Load utility functions, these are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R)
 
 ```{r}
 source(here::here("R", "utility_functions.R"))
 ```
 
 ### Data cleaning
+
+The goal is to create a data set in long format, so that every participant has as many rows as time-points of follow-up. New variables will be created as indicators of time, outcome, competing event and censoring event.
+
 
 - Create a binary variable to indicate all-cause death
 
@@ -62,7 +65,7 @@ levels(prostate$eventType) <-
        odeath = c(levels(prostate$eventType)[c(2:5, 7:10)]))
 ```
 
-- Filter data to only include high dose DES (A=1) and placebo (A=0)
+- Filter data to only include high dose DES (A=1) and placebo (A=0), clean additional covariates
 
 ```{r}
 prostate$rx <- as.factor(prostate$rx)
@@ -75,8 +78,6 @@ prostRed$ageCat <- cut2(prostRed$age, c(0, 60, 70, 80, 100))
 prostRed$normalAct <- prostRed$pf == "normal activity"
 prostRed$eventCens <- prostRed$eventType == 0
 prostRed$eventProst <- prostRed$eventType == 1
-prostRed$Tstart = -0.01 #Needed for the long format
-
 ```
 
 - Descriptive information
@@ -88,6 +89,8 @@ table(prostRed$eventType, prostRed$rx)
 ### Convert data to long format
 
 ```{r}
+prostRed$Tstart = -0.01 #Needed for the long format
+
 cutTimes <- c(0:59)
 
 longProstRed <-
@@ -117,7 +120,7 @@ longProstRed$otherDeath <-
 
 ```
 
-- Glimpse of data structure:
+- Glimpse of data structure, for this matter we select 2 participants with different outcomes.
 
 ```{r,  echo = FALSE}
 longProstRed %>% 
@@ -125,7 +128,8 @@ longProstRed %>%
     patno, dtime, eventCens, allCause, prostateDeath, otherDeath
   ) %>% knitr::kable()
 ```
-To be sure that right risk sets are used in models for this data structure without explicit conditioning, set "future values" of D and Y to missing on a given line if C=1 on that line and set future values of Y to missing on a line if D=1 on that line (respects "order" C,D,Y in each interval) -- nonissue when there are no "ties" but with month long intervals there might be.
+
+- To be sure that right risk sets are used in models for this data structure without explicit conditioning, set "future values" of the competing event (D) and the outcome of interest (Y) to missing on a given line if C = 1 on that line and set future values of Y to missing on a line if D = 1 on that line (respects "order" C, D, Y in each interval). This may not be of an issue when there are no "ties" but with month long or bigger intervals intervals there might be.
 
 ```{r}
 longProstRed$prostateDeath[longProstRed$eventCens == 1] <- NA
@@ -146,9 +150,13 @@ longProstRed %>%
 - Restrict input data set to records with dtime < K + 1 for fitting pooled over time models
 
 ```{r}
+
+# Before
 dim(longProstRed)
 
 longProstRed <- longProstRed[longProstRed$dtime < length(cutTimes), ]
+
+# After filtering records 
 
 dim(longProstRed)
 

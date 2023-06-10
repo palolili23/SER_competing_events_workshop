@@ -79,11 +79,9 @@ n <- length(unique(longProstRed$patno))
 ```
 
 
-## Create expanded datasets
+## Conditional pooled logistic models
 
-Create expanded data so that hazards given A=1 can be computed for all subjects (even those with A=0). In an RCT this is not necessary, could stratify models above and this step by treatment arm.
-
-Expand baseline so it contains a visit at each time point for every individual where the baseline information has been carried forward at each time.
+- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and weights for censoring due to loss to follow-up
 
 
 ```{r}
@@ -105,16 +103,20 @@ plrFitO <-
 
 ```
 
-## Direct effect
+## Create expanded datasets
 
-Dataset construction where A = 1
+- Create two expanded datasets so that hazards given A=1 can be computed for all subjects (even those with A=0), and viceversa (everyone has A = 0). In an RCT this is not necessary, could stratify models above and this step by treatment arm.
+
+- Data set construction where A = 1
+
 ```{r}
 treated <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each interval k+1 for k=0,...,K
 treated$dtime <- rep(cutTimes,n)
 treated$rx <-1 
 ```
 
-Dataset construction where A = 0
+- Data set construction where A = 0
+
 ```{r}
 # Make analogous dataset for placebo
 placebo <- baseline[rep(1:n,each=length(cutTimes)),] #One row for each time
@@ -122,7 +124,7 @@ placebo$dtime <- rep(cutTimes,n)
 placebo$rx <- 0 
 ```
 
-Estimate conditional discrete hazards (cause specific for each cause of death/competing event conditioned for event and hazard of competing event) for each subject in each time interval in both cloned datasets
+- Estimate conditional discrete hazards (cause specific for each cause of death/competing event conditioned for event and hazard of competing event) for each subject in each time interval in both cloned datasets
 
 ```{r}
 treated$hazardP <- predict(plrFitP, newdata = treated, type = 'response') 
@@ -134,7 +136,7 @@ placebo$hazardO <- 0
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 ```
 
-Parametric g-formula estimate of risk under elimination of competing events
+## Direct effect
 
 ```{r}
 cumIncTreated <- calculateCumInc(treated)#a=1
@@ -148,26 +150,19 @@ print(gcompcderd)
 
 ## Total effect
 
-We are going to use the same code as in the previous section, except that in this case instead of fixing the hazard of other causes to death as 0, we are going to calculate hazards for this outcome, fit from the `plrfit0` model and recalculate the survival probability, given death
-
-For A = 1
+- We are going to use the same code as in the previous section, except that in this case instead of fixing the hazard of other causes to death as 0, we are going to calculate hazards for this outcome using predicted values from the `plrfit0` model and recalculate the survival probability, given death
 
 ```{r}
 treated$hazardO <- predict(plrFitO, newdata = treated, type = 'response')
 
 treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
 
-```
-
-For A = 0
-
-```{r}
 placebo$hazardO <- predict(plrFitO, newdata = placebo, type = 'response')
 
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 ```
 
-Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula
+- Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula
 
 ```{r}
 cumIncTreated <- calculateCumInc(treated)#a=1
@@ -204,7 +199,7 @@ Following equation (9) from [Stensrud et al. Journal of the American Statistical
 
 To this matter, we will use the long format data set prepared before: `longProstRed`. 
 
-- Make copies of rx to be used in the hazard of other death
+- Make one extra copy of the exposure `rx`, named `Orx`, to be used in the hazard of death due to other causes.
 
 ```{r}
 longProstRed$Orx <- longProstRed$rx
@@ -228,9 +223,7 @@ plrFitO <-
   )
 ```
   
-- Create simulated data where everyone is treated 
-
-Expand baseline so it contains a visit at each time point for every individual and where the baseline information has been carried forward at each time
+- Create three copies of the data. Data set construction where Ay and Ad = 1
 
 ```{r}
 treated <-
@@ -244,7 +237,7 @@ treated$Orx <- 1
   
 ```
 
-- Make analogous dataset for placebo
+- Dataset construction where Ay and Ad = 1
 
 ```{r}
 placebo <-
@@ -258,29 +251,7 @@ placebo$Orx <- 0
 
 ```
 
-Turn into conditional risk of event in each time interval
-
-```{r}
-treated$hazardP <-
-    predict(plrFitP, newdata = treated, type = 'response')
-  
-treated$hazardO <-
-    predict(plrFitO, newdata = treated, type = 'response')
-  
-treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
-```
-
-```{r}
-placebo$hazardP <-
-    predict(plrFitP, newdata = placebo, type = 'response')
-
-placebo$hazardO <-
-    predict(plrFitO, newdata = placebo, type = 'response')
-
-placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
-```
-
-- Make analogous dataset for Ay=1, Ad=0
+- Dataset construction where Ay = 1, Ad = 0
 
 ```{r}
 treatAy <-
@@ -291,6 +262,32 @@ treatAy$dtime <- rep(cutTimes, n)
 treatAy$rx <- 1
   
 treatAy$Orx <- 0
+```
+
+- Calculate hazards for each time interval in the three cloned data sets
+
+```{r}
+## For Ay = 1 and Ad = 1
+
+treated$hazardP <-
+    predict(plrFitP, newdata = treated, type = 'response')
+  
+treated$hazardO <-
+    predict(plrFitO, newdata = treated, type = 'response')
+  
+treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
+
+## For Ay = 0, Ad = 0
+
+placebo$hazardP <-
+    predict(plrFitP, newdata = placebo, type = 'response')
+
+placebo$hazardO <-
+    predict(plrFitO, newdata = placebo, type = 'response')
+
+placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
+
+## For Ay = 1, Ad = 0
 
 treatAy$hazardP <-
     predict(plrFitP, newdata = treatAy, type = 'response')
@@ -302,7 +299,7 @@ treatAy$s <- (1 - treatAy$hazardP) * (1 - treatAy$hazardO)
 
 ```
 
-- Calculate cumulative incidence for each estimand
+- Calculate cumulative incidence
 
 ```{r}
 cumIncTreated <- calculateCumInc(treated)
@@ -339,3 +336,11 @@ legend(x = 0, y = 1,
 ### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
 
 ### [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/2022_ser_competing_events/R/ipw.html)
+
+# References
+
+- Young JG, Stensrud MJ, Tchetgen Tchetgen EJ, Hernán MA. A causal framework for classical statistical estimands in failure time settings with competing events. Statistics in Medicine 2020. [Paper link](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471) [Code](https://github.com/CausalInference/CompetingEvents_Young_SIM_2020)
+
+- Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable Effects for Causal Inference in the Presence of Competing Events. Journal of the American Statistical Association 2022. [Paper link](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
+
+

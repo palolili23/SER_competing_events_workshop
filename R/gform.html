@@ -1357,6 +1357,8 @@ G-formula</h1>
 G-formula</a></h2>
     <div id="toc">
       <ul>
+      <li><a href="#conditional-pooled-logistic-models" id="toc-conditional-pooled-logistic-models">Conditional pooled
+      logistic models</a></li>
       <li><a href="#create-expanded-datasets" id="toc-create-expanded-datasets">Create expanded
       datasets</a></li>
       <li><a href="#direct-effect" id="toc-direct-effect">Direct
@@ -1366,6 +1368,7 @@ G-formula</a></h2>
       <li><a href="#total-effect-of-death-on-other-causes" id="toc-total-effect-of-death-on-other-causes">Total effect of
       death on other causes</a></li>
       <li><a href="#separable-effects" id="toc-separable-effects">Separable effects</a></li>
+      <li><a href="#references" id="toc-references">References</a></li>
       </ul>
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
@@ -1378,14 +1381,14 @@ G-formula</a></h2>
    
 <!-- Don't indent these lines or it will mess pre blocks indentation --> 
 <div id="main">
-<div id="create-expanded-datasets" class="section level2">
-<h2>Create expanded datasets</h2>
-<p>Create expanded data so that hazards given A=1 can be computed for
-all subjects (even those with A=0). In an RCT this is not necessary,
-could stratify models above and this step by treatment arm.</p>
-<p>Expand baseline so it contains a visit at each time point for every
-individual where the baseline information has been carried forward at
-each time.</p>
+<div id="conditional-pooled-logistic-models" class="section level2">
+<h2>Conditional pooled logistic models</h2>
+<ul>
+<li>First, we run a set of conditional pooled logistic models, both as a
+first step to calculate the risk of prostate cancer death, and to
+calculate weights for death due to other causes, and weights for
+censoring due to loss to follow-up</li>
+</ul>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="do">### Pooled logistic regression for prostate cancer death</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>plrFitP <span class="ot">&lt;-</span></span>
@@ -1402,21 +1405,31 @@ each time.</p>
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> longProstRed,</span>
 <span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="fu">binomial</span>())</span></code></pre></div>
 </div>
-<div id="direct-effect" class="section level2">
-<h2>Direct effect</h2>
-<p>Dataset construction where A = 1</p>
+<div id="create-expanded-datasets" class="section level2">
+<h2>Create expanded datasets</h2>
+<ul>
+<li><p>Create two expanded datasets so that hazards given A=1 can be
+computed for all subjects (even those with A=0), and viceversa (everyone
+has A = 0). In an RCT this is not necessary, could stratify models above
+and this step by treatment arm.</p></li>
+<li><p>Data set construction where A = 1</p></li>
+</ul>
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>treated <span class="ot">&lt;-</span> baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n,<span class="at">each=</span><span class="fu">length</span>(cutTimes)),] <span class="co">#One row for each interval k+1 for k=0,...,K</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes,n)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>rx <span class="ot">&lt;-</span><span class="dv">1</span> </span></code></pre></div>
-<p>Dataset construction where A = 0</p>
+<ul>
+<li>Data set construction where A = 0</li>
+</ul>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Make analogous dataset for placebo</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>placebo <span class="ot">&lt;-</span> baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n,<span class="at">each=</span><span class="fu">length</span>(cutTimes)),] <span class="co">#One row for each time</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes,n)</span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">0</span> </span></code></pre></div>
-<p>Estimate conditional discrete hazards (cause specific for each cause
+<ul>
+<li>Estimate conditional discrete hazards (cause specific for each cause
 of death/competing event conditioned for event and hazard of competing
 event) for each subject in each time interval in both cloned
-datasets</p>
+datasets</li>
+</ul>
 <div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardP <span class="ot">&lt;-</span> <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>) </span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardO <span class="ot">&lt;-</span> <span class="dv">0</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardO)</span>
@@ -1424,8 +1437,9 @@ datasets</p>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardP <span class="ot">&lt;-</span> <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>) </span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardO <span class="ot">&lt;-</span> <span class="dv">0</span></span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardO)</span></code></pre></div>
-<p>Parametric g-formula estimate of risk under elimination of competing
-events</p>
+</div>
+<div id="direct-effect" class="section level2">
+<h2>Direct effect</h2>
 <div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>cumIncTreated <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated)<span class="co">#a=1</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>cumIncPlacebo <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo)<span class="co">#a=0</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1438,48 +1452,51 @@ events</p>
 </div>
 <div id="total-effect" class="section level2">
 <h2>Total effect</h2>
-<p>We are going to use the same code as in the previous section, except
+<ul>
+<li>We are going to use the same code as in the previous section, except
 that in this case instead of fixing the hazard of other causes to death
-as 0, we are going to calculate hazards for this outcome, fit from the
-<code>plrfit0</code> model and recalculate the survival probability,
-given death</p>
-<p>For A = 1</p>
+as 0, we are going to calculate hazards for this outcome using predicted
+values from the <code>plrfit0</code> model and recalculate the survival
+probability, given death</li>
+</ul>
 <div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardO <span class="ot">&lt;-</span> <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardO)</span></code></pre></div>
-<p>For A = 0</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardO <span class="ot">&lt;-</span> <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardO)</span></code></pre></div>
-<p>Calculate risks and corresponding treatment effects (RR/RD) by end of
-follow-up using parametric g-formula</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>cumIncTreated <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated)<span class="co">#a=1</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>cumIncPlacebo <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo)<span class="co">#a=0</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>gcomptotrr<span class="ot">&lt;-</span>cumIncTreated[<span class="fu">length</span>(cutTimes)]<span class="sc">/</span>cumIncPlacebo[<span class="fu">length</span>(cutTimes)] </span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>gcomptotrd<span class="ot">&lt;-</span>cumIncTreated[<span class="fu">length</span>(cutTimes)]<span class="sc">-</span>cumIncPlacebo[<span class="fu">length</span>(cutTimes)]</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcomptotrr)</span></code></pre></div>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>treated<span class="sc">$</span>hazardO)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardO <span class="ot">&lt;-</span> <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span><span class="sc">-</span>placebo<span class="sc">$</span>hazardO)</span></code></pre></div>
+<ul>
+<li>Calculate risks and corresponding treatment effects (RR/RD) by end
+of follow-up using parametric g-formula</li>
+</ul>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>cumIncTreated <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated)<span class="co">#a=1</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>cumIncPlacebo <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo)<span class="co">#a=0</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>gcomptotrr<span class="ot">&lt;-</span>cumIncTreated[<span class="fu">length</span>(cutTimes)]<span class="sc">/</span>cumIncPlacebo[<span class="fu">length</span>(cutTimes)] </span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>gcomptotrd<span class="ot">&lt;-</span>cumIncTreated[<span class="fu">length</span>(cutTimes)]<span class="sc">-</span>cumIncPlacebo[<span class="fu">length</span>(cutTimes)]</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcomptotrr)</span></code></pre></div>
 <pre><code>## [1] 0.7179558</code></pre>
-<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcomptotrd)</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcomptotrd)</span></code></pre></div>
 <pre><code>## [1] -0.07942543</code></pre>
 </div>
 <div id="total-effect-of-death-on-other-causes" class="section level2">
 <h2>Total effect of death on other causes</h2>
-<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># parametric g-formula estimate of the risk of the competing event itself</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>cumIncTreatedcomp <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated, <span class="at">competing =</span> <span class="cn">TRUE</span>)<span class="co">#a=1</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>cumIncPlacebocomp <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo, <span class="at">competing =</span> <span class="cn">TRUE</span>)<span class="co">#a=0</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>gcompcomprr <span class="ot">&lt;-</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  cumIncTreatedcomp[<span class="fu">length</span>(cutTimes)] <span class="sc">/</span> cumIncPlacebocomp[<span class="fu">length</span>(cutTimes)]</span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>gcompcomprd <span class="ot">&lt;-</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  cumIncTreatedcomp[<span class="fu">length</span>(cutTimes)] <span class="sc">-</span> cumIncPlacebocomp[<span class="fu">length</span>(cutTimes)]</span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcompcomprr)</span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># parametric g-formula estimate of the risk of the competing event itself</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>cumIncTreatedcomp <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated, <span class="at">competing =</span> <span class="cn">TRUE</span>)<span class="co">#a=1</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>cumIncPlacebocomp <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo, <span class="at">competing =</span> <span class="cn">TRUE</span>)<span class="co">#a=0</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>gcompcomprr <span class="ot">&lt;-</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  cumIncTreatedcomp[<span class="fu">length</span>(cutTimes)] <span class="sc">/</span> cumIncPlacebocomp[<span class="fu">length</span>(cutTimes)]</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>gcompcomprd <span class="ot">&lt;-</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  cumIncTreatedcomp[<span class="fu">length</span>(cutTimes)] <span class="sc">-</span> cumIncPlacebocomp[<span class="fu">length</span>(cutTimes)]</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcompcomprr)</span></code></pre></div>
 <pre><code>## [1] 1.242671</code></pre>
-<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcompcomprd)</span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gcompcomprd)</span></code></pre></div>
 <pre><code>## [1] 0.09904436</code></pre>
 </div>
 <div id="separable-effects" class="section level2">
@@ -1489,95 +1506,105 @@ et al. Journal of the American Statistical Association. 2020</a></p>
 <p>To this matter, we will use the long format data set prepared before:
 <code>longProstRed</code>.</p>
 <ul>
-<li>Make copies of rx to be used in the hazard of other death</li>
+<li>Make one extra copy of the exposure <code>rx</code>, named
+<code>Orx</code>, to be used in the hazard of death due to other
+causes.</li>
 </ul>
-<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>Orx <span class="ot">&lt;-</span> longProstRed<span class="sc">$</span>rx</span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>Orx <span class="ot">&lt;-</span> longProstRed<span class="sc">$</span>rx</span></code></pre></div>
 <ul>
 <li>Fit conditional pooled logistic regression models</li>
 </ul>
-<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>plrFitP <span class="ot">&lt;-</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">glm</span>(</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>      prostateDeath <span class="sc">~</span> rx<span class="sc">*</span>(dtime <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">2</span>)<span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">3</span>)) <span class="sc">+</span> normalAct <span class="sc">+</span> ageCat <span class="sc">+</span> hx <span class="sc">+</span> hgBinary,</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> longProstRed,</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>      <span class="at">family =</span> <span class="fu">binomial</span>()</span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>plrFitO <span class="ot">&lt;-</span></span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">glm</span>(</span>
-<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    otherDeath <span class="sc">~</span> Orx <span class="sc">*</span> (dtime <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">2</span>) <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">3</span>)) <span class="sc">+</span> normalAct <span class="sc">+</span> ageCat <span class="sc">+</span> hx <span class="sc">+</span> hgBinary,</span>
-<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> longProstRed,</span>
-<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="fu">binomial</span>()</span>
-<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>plrFitP <span class="ot">&lt;-</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">glm</span>(</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>      prostateDeath <span class="sc">~</span> rx<span class="sc">*</span>(dtime <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">2</span>)<span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">3</span>)) <span class="sc">+</span> normalAct <span class="sc">+</span> ageCat <span class="sc">+</span> hx <span class="sc">+</span> hgBinary,</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> longProstRed,</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>      <span class="at">family =</span> <span class="fu">binomial</span>()</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>plrFitO <span class="ot">&lt;-</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">glm</span>(</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    otherDeath <span class="sc">~</span> Orx <span class="sc">*</span> (dtime <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">2</span>) <span class="sc">+</span> <span class="fu">I</span>(dtime <span class="sc">^</span> <span class="dv">3</span>)) <span class="sc">+</span> normalAct <span class="sc">+</span> ageCat <span class="sc">+</span> hx <span class="sc">+</span> hgBinary,</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> longProstRed,</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">family =</span> <span class="fu">binomial</span>()</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div>
 <ul>
-<li>Create simulated data where everyone is treated</li>
+<li>Create three copies of the data. Data set construction where Ay and
+Ad = 1</li>
 </ul>
-<p>Expand baseline so it contains a visit at each time point for every
-individual and where the baseline information has been carried forward
-at each time</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>treated <span class="ot">&lt;-</span></span>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>treated <span class="ot">&lt;-</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n, <span class="at">each =</span> <span class="fu">length</span>(cutTimes)), ] <span class="co">#One row for each time</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">1</span></span></code></pre></div>
+<ul>
+<li>Dataset construction where Ay and Ad = 1</li>
+</ul>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>placebo <span class="ot">&lt;-</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n, <span class="at">each =</span> <span class="fu">length</span>(cutTimes)), ] <span class="co">#One row for each time</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">0</span></span>
 <span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">1</span></span></code></pre></div>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">0</span></span></code></pre></div>
 <ul>
-<li>Make analogous dataset for placebo</li>
+<li>Dataset construction where Ay = 1, Ad = 0</li>
 </ul>
-<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>placebo <span class="ot">&lt;-</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n, <span class="at">each =</span> <span class="fu">length</span>(cutTimes)), ] <span class="co">#One row for each time</span></span>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>treatAy <span class="ot">&lt;-</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n, <span class="at">each =</span> <span class="fu">length</span>(cutTimes)), ]</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">0</span></span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">0</span></span></code></pre></div>
-<p>Turn into conditional risk of event in each time interval</p>
-<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> treated<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> treated<span class="sc">$</span>hazardO)</span></code></pre></div>
-<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> placebo<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> placebo<span class="sc">$</span>hazardO)</span></code></pre></div>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">0</span></span></code></pre></div>
 <ul>
-<li>Make analogous dataset for Ay=1, Ad=0</li>
+<li>Calculate hazards for each time interval in the three cloned data
+sets</li>
 </ul>
-<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>treatAy <span class="ot">&lt;-</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    baseline[<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n, <span class="at">each =</span> <span class="fu">length</span>(cutTimes)), ]</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>dtime <span class="ot">&lt;-</span> <span class="fu">rep</span>(cutTimes, n)</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="dv">1</span></span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>Orx <span class="ot">&lt;-</span> <span class="dv">0</span></span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> treatAy, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
-<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> treatAy, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
-<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> treatAy<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> treatAy<span class="sc">$</span>hazardO)</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="do">## For Ay = 1 and Ad = 1</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> treated, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>treated<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> treated<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> treated<span class="sc">$</span>hazardO)</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a><span class="do">## For Ay = 0, Ad = 0</span></span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> placebo, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>placebo<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> placebo<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> placebo<span class="sc">$</span>hazardO)</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a><span class="do">## For Ay = 1, Ad = 0</span></span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>hazardP <span class="ot">&lt;-</span></span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitP, <span class="at">newdata =</span> treatAy, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>hazardO <span class="ot">&lt;-</span></span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(plrFitO, <span class="at">newdata =</span> treatAy, <span class="at">type =</span> <span class="st">&#39;response&#39;</span>)</span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>treatAy<span class="sc">$</span>s <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">-</span> treatAy<span class="sc">$</span>hazardP) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> treatAy<span class="sc">$</span>hazardO)</span></code></pre></div>
 <ul>
-<li>Calculate cumulative incidence for each estimand</li>
+<li>Calculate cumulative incidence</li>
 </ul>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>cumIncTreated <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated)</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>cumIncTreatAy <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treatAy)</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>cumIncPlacebo <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo)</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>estimatesFullData <span class="ot">&lt;-</span></span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(cumIncTreated, cumIncTreatAy, cumIncPlacebo)</span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">round</span>(estimatesFullData[<span class="dv">36</span>,], <span class="dv">2</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>cumIncTreated <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treated)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>cumIncTreatAy <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(treatAy)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>cumIncPlacebo <span class="ot">&lt;-</span> <span class="fu">calculateCumInc</span>(placebo)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>estimatesFullData <span class="ot">&lt;-</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(cumIncTreated, cumIncTreatAy, cumIncPlacebo)</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">round</span>(estimatesFullData[<span class="dv">36</span>,], <span class="dv">2</span>))</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -1599,21 +1626,21 @@ at each time</p>
 <ul>
 <li>Cumulative incidence curves</li>
 </ul>
-<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(cutTimes, cumIncTreated, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">ylab =</span> <span class="st">&quot;Risk&quot;</span>,</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">&quot;Months&quot;</span>, </span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">1</span>, <span class="at">xlim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">52</span>))</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="fu">lines</span>(cutTimes, cumIncPlacebo, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">col =</span> <span class="dv">2</span>, <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">lwd =</span> <span class="dv">1</span>)</span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="fu">lines</span>(cutTimes, cumIncTreatAy, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
-<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">col =</span> <span class="dv">3</span>, <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">lwd =</span> <span class="dv">1</span>)</span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> <span class="dv">1</span>, </span>
-<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>       <span class="fu">c</span>(<span class="st">&quot;(Ay=1,Ad=1)&quot;</span>, <span class="st">&quot;(Ay=1,Ad=0)&quot;</span>, <span class="st">&quot;(Ay=0,Ad=0)&quot;</span>),</span>
-<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>       <span class="at">bty =</span> <span class="st">&quot;n&quot;</span>, <span class="at">col =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">2</span>),</span>
-<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>), <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">pt.cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">1</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(cutTimes, cumIncTreated, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">ylab =</span> <span class="st">&quot;Risk&quot;</span>,</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">&quot;Months&quot;</span>, </span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">lty =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">1</span>, <span class="at">xlim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">52</span>))</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="fu">lines</span>(cutTimes, cumIncPlacebo, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">col =</span> <span class="dv">2</span>, <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">lwd =</span> <span class="dv">1</span>)</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a><span class="fu">lines</span>(cutTimes, cumIncTreatAy, <span class="at">type =</span> <span class="st">&quot;s&quot;</span>,</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>      <span class="at">col =</span> <span class="dv">3</span>, <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">lwd =</span> <span class="dv">1</span>)</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> <span class="dv">1</span>, </span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>       <span class="fu">c</span>(<span class="st">&quot;(Ay=1,Ad=1)&quot;</span>, <span class="st">&quot;(Ay=1,Ad=0)&quot;</span>, <span class="st">&quot;(Ay=0,Ad=0)&quot;</span>),</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>       <span class="at">bty =</span> <span class="st">&quot;n&quot;</span>, <span class="at">col =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">2</span>),</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>       <span class="at">lty =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>), <span class="at">cex =</span> <span class="dv">1</span>, <span class="at">pt.cex =</span> <span class="dv">1</span>, <span class="at">lwd =</span> <span class="dv">1</span>)</span></code></pre></div>
 <p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABgAAAAPACAMAAADE4EJKAAAA7VBMVEUAAAAAADoAAGYAOjoAOmYAOpAAZmYAZrY6AAA6OgA6Ojo6OmY6ZmY6ZpA6ZrY6kJA6kLY6kNth0E9mAABmADpmOgBmOjpmZjpmZmZmZpBmZrZmkJBmkLZmkNtmtrZmtttmtv+QOgCQOjqQZgCQZjqQZmaQkDqQkGaQkLaQtraQttuQtv+Q29uQ2/+2ZgC2Zjq2kDq2kGa2kJC2tpC2tra2ttu225C227a229u22/+2///bkDrbkGbbtmbbtpDbtrbb25Db27bb29vb2//b/7bb/9vb///fU2v/tmb/25D/27b/29v//7b//9v////rTapGAAAACXBIWXMAAB2HAAAdhwGP5fFlAAAgAElEQVR4nO3d/WMTV77Y4VECF4Us7GUpud6WLXjLbZt0oyyN00K0kAu55doG6f//czojaaTRy8geWS9z5vs8PyzY2IPGbM7n6MxbNgYgpOzULwCA0xAAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAAghIAgKAEACAoAQAISgAA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" width="768" /></p>
 <div id="go-to-data-cleaning-and-setup-here" class="section level3">
 <h3><a href="https://palolili23.github.io/2022_ser_competing_events/R/index.html">Go
@@ -1623,6 +1650,19 @@ to: Data cleaning and setup here</a></h3>
 <h3><a href="https://palolili23.github.io/2022_ser_competing_events/R/ipw.html">Go
 to: Direct, total and separable effects, using IPW</a></h3>
 </div>
+</div>
+<div id="references" class="section level1">
+<h1>References</h1>
+<ul>
+<li><p>Young JG, Stensrud MJ, Tchetgen Tchetgen EJ, Hernán MA. A causal
+framework for classical statistical estimands in failure time settings
+with competing events. Statistics in Medicine 2020. <a href="https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471">Paper
+link</a> <a href="https://github.com/CausalInference/CompetingEvents_Young_SIM_2020">Code</a></p></li>
+<li><p>Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable
+Effects for Causal Inference in the Presence of Competing Events.
+Journal of the American Statistical Association 2022. <a href="https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783">Paper
+link</a></p></li>
+</ul>
 </div>
 </div>
 

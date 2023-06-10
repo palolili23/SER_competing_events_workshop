@@ -6,7 +6,7 @@
     <meta name="generator" content="pandoc" />
 
     
-        <meta name="date" content="2023-06-09" />
+        <meta name="date" content="2023-06-10" />
     
     <title>Causal inference with competing events</title>
 
@@ -1366,7 +1366,7 @@ events</a></h2>
       </ul>
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
-                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2023-06-09</p>
+                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2023-06-10</p>
           </div>
    </div>
      
@@ -1400,12 +1400,17 @@ this repository. <a href="https://github.com/palolili23/2022_ser_competing_event
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>prostate <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;R&quot;</span>, <span class="st">&quot;prostate.csv&quot;</span>), <span class="at">sep =</span> <span class="st">&#39;;&#39;</span>)</span></code></pre></div>
 <ul>
 <li>Load utility functions, these are located in the github repository.
-<a href="https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R">Link</a></li>
+These functions are necessary to calculate hazards and cumulative
+incidence. <a href="https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R">Link</a></li>
 </ul>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;R&quot;</span>, <span class="st">&quot;utility_functions.R&quot;</span>))</span></code></pre></div>
 </div>
 <div id="data-cleaning" class="section level3">
 <h3>Data cleaning</h3>
+<p>The goal is to create a data set in long format, so that every
+participant has as many rows as time-points of follow-up. New variables
+will be created as indicators of time, outcome, competing event and
+censoring event.</p>
 <ul>
 <li>Create a binary variable to indicate all-cause death</li>
 </ul>
@@ -1420,8 +1425,8 @@ this repository. <a href="https://github.com/palolili23/2022_ser_competing_event
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>       <span class="at">pdeath =</span> <span class="st">&quot;dead - prostatic ca&quot;</span>,</span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">odeath =</span> <span class="fu">c</span>(<span class="fu">levels</span>(prostate<span class="sc">$</span>eventType)[<span class="fu">c</span>(<span class="dv">2</span><span class="sc">:</span><span class="dv">5</span>, <span class="dv">7</span><span class="sc">:</span><span class="dv">10</span>)]))</span></code></pre></div>
 <ul>
-<li>Filter data to only include high dose DES (A=1) and placebo
-(A=0)</li>
+<li>Filter data to only include high dose DES (A=1) and placebo (A=0),
+clean additional covariates</li>
 </ul>
 <div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>prostate<span class="sc">$</span>rx <span class="ot">&lt;-</span> <span class="fu">as.factor</span>(prostate<span class="sc">$</span>rx)</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>prostRed <span class="ot">&lt;-</span> prostate[prostate<span class="sc">$</span>rx <span class="sc">%in%</span> <span class="fu">levels</span>(prostate<span class="sc">$</span>rx)[<span class="dv">3</span><span class="sc">:</span><span class="dv">4</span>], ]</span>
@@ -1432,8 +1437,7 @@ this repository. <a href="https://github.com/palolili23/2022_ser_competing_event
 <span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>ageCat <span class="ot">&lt;-</span> <span class="fu">cut2</span>(prostRed<span class="sc">$</span>age, <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">60</span>, <span class="dv">70</span>, <span class="dv">80</span>, <span class="dv">100</span>))</span>
 <span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>normalAct <span class="ot">&lt;-</span> prostRed<span class="sc">$</span>pf <span class="sc">==</span> <span class="st">&quot;normal activity&quot;</span></span>
 <span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>eventCens <span class="ot">&lt;-</span> prostRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">0</span></span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>eventProst <span class="ot">&lt;-</span> prostRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">1</span></span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>Tstart <span class="ot">=</span> <span class="sc">-</span><span class="fl">0.01</span> <span class="co">#Needed for the long format</span></span></code></pre></div>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>eventProst <span class="ot">&lt;-</span> prostRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">1</span></span></code></pre></div>
 <ul>
 <li>Descriptive information</li>
 </ul>
@@ -1446,34 +1450,37 @@ this repository. <a href="https://github.com/palolili23/2022_ser_competing_event
 </div>
 <div id="convert-data-to-long-format" class="section level3">
 <h3>Convert data to long format</h3>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>cutTimes <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">0</span><span class="sc">:</span><span class="dv">59</span>)</span>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>prostRed<span class="sc">$</span>Tstart <span class="ot">=</span> <span class="sc">-</span><span class="fl">0.01</span> <span class="co">#Needed for the long format</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>longProstRed <span class="ot">&lt;-</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">survSplit</span>(</span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> prostRed,</span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">cut =</span> cutTimes,</span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">start =</span> <span class="st">&quot;Tstart&quot;</span>,</span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">end =</span> <span class="st">&quot;dtime&quot;</span>,</span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">event =</span> <span class="st">&quot;allCause&quot;</span>)</span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>longProstRedCens <span class="ot">&lt;-</span></span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">survSplit</span>(</span>
-<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> prostRed,</span>
-<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">cut =</span> cutTimes,</span>
-<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">start =</span> <span class="st">&quot;Tstart&quot;</span>,</span>
-<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">end =</span> <span class="st">&quot;dtime&quot;</span>,</span>
-<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">event =</span> <span class="st">&quot;eventCens&quot;</span>)</span>
-<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>eventCens <span class="ot">&lt;-</span> longProstRedCens<span class="sc">$</span>eventCens</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>cutTimes <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">0</span><span class="sc">:</span><span class="dv">59</span>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>longProstRed <span class="ot">&lt;-</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">survSplit</span>(</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> prostRed,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">cut =</span> cutTimes,</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">start =</span> <span class="st">&quot;Tstart&quot;</span>,</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">end =</span> <span class="st">&quot;dtime&quot;</span>,</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">event =</span> <span class="st">&quot;allCause&quot;</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>longProstRedCens <span class="ot">&lt;-</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">survSplit</span>(</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">data =</span> prostRed,</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">cut =</span> cutTimes,</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">start =</span> <span class="st">&quot;Tstart&quot;</span>,</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>    <span class="at">end =</span> <span class="st">&quot;dtime&quot;</span>,</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">event =</span> <span class="st">&quot;eventCens&quot;</span>)</span>
 <span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Make column for prostate cancer mortality</span></span>
-<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>prostateDeath <span class="ot">&lt;-</span></span>
-<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>  longProstRed<span class="sc">$</span>allCause <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span>  longProstRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">1</span></span>
-<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>otherDeath <span class="ot">&lt;-</span></span>
-<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a>  longProstRed<span class="sc">$</span>allCause <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span> longProstRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">2</span></span></code></pre></div>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>eventCens <span class="ot">&lt;-</span> longProstRedCens<span class="sc">$</span>eventCens</span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a><span class="co"># Make column for prostate cancer mortality</span></span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>prostateDeath <span class="ot">&lt;-</span></span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>  longProstRed<span class="sc">$</span>allCause <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span>  longProstRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">1</span></span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>otherDeath <span class="ot">&lt;-</span></span>
+<span id="cb9-28"><a href="#cb9-28" aria-hidden="true" tabindex="-1"></a>  longProstRed<span class="sc">$</span>allCause <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span> longProstRed<span class="sc">$</span>eventType <span class="sc">==</span> <span class="dv">2</span></span></code></pre></div>
 <ul>
-<li>Glimpse of data structure:</li>
+<li>Glimpse of data structure, for this matter we select 2 participants
+with different outcomes.</li>
 </ul>
 <table>
 <thead>
@@ -1665,12 +1672,15 @@ this repository. <a href="https://github.com/palolili23/2022_ser_competing_event
 </tr>
 </tbody>
 </table>
-<p>To be sure that right risk sets are used in models for this data
-structure without explicit conditioning, set “future values” of D and Y
-to missing on a given line if C=1 on that line and set future values of
-Y to missing on a line if D=1 on that line (respects “order” C,D,Y in
-each interval) – nonissue when there are no “ties” but with month long
-intervals there might be.</p>
+<ul>
+<li>To be sure that right risk sets are used in models for this data
+structure without explicit conditioning, set “future values” of the
+competing event (D) and the outcome of interest (Y) to missing on a
+given line if C = 1 on that line and set future values of Y to missing
+on a line if D = 1 on that line (respects “order” C, D, Y in each
+interval). This may not be of an issue when there are no “ties” but with
+month long or bigger intervals intervals there might be.</li>
+</ul>
 <div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>prostateDeath[longProstRed<span class="sc">$</span>eventCens <span class="sc">==</span> <span class="dv">1</span>] <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>longProstRed<span class="sc">$</span>otherDeath[longProstRed<span class="sc">$</span>eventCens <span class="sc">==</span> <span class="dv">1</span>] <span class="ot">&lt;-</span> <span class="cn">NA</span></span>
@@ -1870,11 +1880,14 @@ intervals there might be.</p>
 <li>Restrict input data set to records with dtime &lt; K + 1 for fitting
 pooled over time models</li>
 </ul>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(longProstRed)</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Before</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(longProstRed)</span></code></pre></div>
 <pre><code>## [1] 8722   29</code></pre>
 <div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>longProstRed <span class="ot">&lt;-</span> longProstRed[longProstRed<span class="sc">$</span>dtime <span class="sc">&lt;</span> <span class="fu">length</span>(cutTimes), ]</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(longProstRed)</span></code></pre></div>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="co"># After filtering records </span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(longProstRed)</span></code></pre></div>
 <pre><code>## [1] 8670   29</code></pre>
 <ul>
 <li>Create ‘baseline’ - data collected at visit 0</li>

@@ -85,9 +85,9 @@ n <- length(unique(longProstRed$patno))
 ```
 
 
-## Computation of IPC weights
+## Conditional pooled logistic models
 
-- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and weights for censoring
+- First, we run a set of conditional pooled logistic models, both as a first step to calculate the risk of prostate cancer death, and to calculate weights for death due to other causes, and weights for censoring due to loss to follow-up
 
 ```{r}
 ### Pooled logistic regression for prostate cancer death (this will be needed in the next section)
@@ -130,7 +130,9 @@ plrFitOnum <-
 
 ```
 
-- Calculate weights for censoring due to loss to follow-up
+## Weights calculation
+
+### Calculate weights for censoring due to loss to follow-up
 
 ```{r}
 ### Denominator
@@ -154,16 +156,17 @@ predC <- longProstRed$predC
 predCnum <- longProstRed$predCnum
 ```
 
-- Glimpse of data 
+- Glimpse of data:
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   filter(patno == 8) %>% slice(45:60) %>% 
   select(patno, dtime, starts_with("pred")) %>% 
   knitr::kable()
 ```
 
-- Calculate the cumulative probability over time
+- Calculate the cumulative probability over time:
+
 ````{r}
 cumPredC <-
   unlist(aggregate(predC ~ longProstRed$patno, FUN = cumprod)$predC,
@@ -175,7 +178,8 @@ cumPredCnum <-
 
 ```
 
-- Glimpse 
+- Glimpse of data:
+
 ```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredC = cumPredC) %>% 
@@ -189,49 +193,48 @@ longProstRed %>%
 ```{r}
 
 ### Unstabilized weights
-weights_te <- 1 / cumPredC
+weights_cens <- 1 / cumPredC
 
 ### Stabilized weights
 
-weights_te_stab <- ipwEstimand_te_stab <- cumPredCnum / cumPredC
+weights_cens_stab <- cumPredCnum / cumPredC
 ```
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredC = cumPredC,
-         weights_te = weights_te,
-         weights_te_stab = weights_te_stab) %>% 
+         weights_cens = weights_cens,
+         weights_cens_stab = weights_cens_stab) %>% 
     filter(patno == 8) %>% slice(45:60) %>% 
   select(patno, dtime, starts_with("pred"), cumPredC, starts_with("weig")) %>% 
   knitr::kable()
 ```
 
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredC = cumPredC,
-         weights_te = weights_te,
-         weights_te_stab = weights_te_stab) %>% 
-ggplot(aes(as_factor(dtime), weights_te)) +
+         weights_cens = weights_cens,
+         weights_cens_stab = weights_cens_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_cens)) +
   geom_boxplot() +
   labs(title = "Unstabilized weights for censoring")
 ```
 
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredC = cumPredC,
-         weights_te = weights_te,
-         weights_te_stab = weights_te_stab) %>% 
-ggplot(aes(as_factor(dtime), weights_te_stab)) +
+         weights_cens = weights_cens,
+         weights_cens_stab = weights_cens_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_cens_stab)) +
   geom_boxplot() +
   labs(title = "Unstabilized weights for censoring")
 ```
 
-- Calculate unstabilized and stabilized weights for death from other causes
+### Calculate unstabilized and stabilized weights for death from other causes
 
 ```{r}
-
 ### Denominator
 
 predO <-
@@ -253,44 +256,44 @@ cumPredOnum <-
 
 ### Weight calculation
 
-weights_de <- 1 / cumPredO
+weights_compev <- 1 / cumPredO
 
-weights_de_stab <-
+weights_compev_stab <-
   cumPredOnum / cumPredO
 ```
 
 - Glimpse of data
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredO = cumPredO,
          cumPredOnum = cumPredOnum,
-         weights_de = weights_de,
-         weights_de_stab = weights_de_stab) %>% 
+         weights_compev = weights_compev,
+         weights_compev_stab = weights_compev_stab) %>% 
     filter(patno == 487) %>% 
   select(patno, dtime, cumPredO, cumPredOnum, starts_with("weig")) %>% 
   knitr::kable()
 
 ```
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredO = cumPredO,
          cumPredOnum = cumPredOnum,
-         weights_de = weights_de,
-         weights_de_stab = weights_de_stab) %>% 
-ggplot(aes(as_factor(dtime), weights_de)) +
+         weights_compev = weights_compev,
+         weights_compev_stab = weights_compev_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_compev)) +
   geom_boxplot() +
   labs(title = "Unstabilized weights for death of other causes")
 ```
 
-```{r}
+```{r, echo = FALSE}
 longProstRed %>% 
   mutate(cumPredO = cumPredO,
          cumPredOnum = cumPredOnum,
-         weights_de = weights_de,
-         weights_de_stab = weights_de_stab) %>% 
-ggplot(aes(as_factor(dtime), weights_de_stab)) +
+         weights_compev = weights_compev,
+         weights_compev_stab = weights_compev_stab) %>% 
+ggplot(aes(as_factor(dtime), weights_compev_stab)) +
   geom_boxplot() +
   labs(title = "Stabilized weights for death of other causes")
 ```
@@ -298,25 +301,22 @@ ggplot(aes(as_factor(dtime), weights_de_stab)) +
 - Multiply weights for censoring and for death due to other causes
 
 ```{r}
-weights_de <- 1 / cumPredC * 1 / cumPredO
+weights_de <- weights_cens * weights_compev
 
-weights_de_stab <-
-  cumPredCnum / cumPredC * cumPredOnum / cumPredO
+weights_de_stab <- weights_cens_stab * weights_compev_stab
 ```
 
 - Assess weights
 
 ```{r}
-summary(weights_te)
-
 summary(weights_de)
-
-summary(weights_te_stab)
 
 summary(weights_de_stab)
 ```
 
-## Direct effect
+## Direct effect estimation
+
+In this section we will apply utility functions that are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R)
 
 Following equation (37) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
 
@@ -384,10 +384,10 @@ cumIncPlacebo_des <-
 
 ```
 
-- Risks at 60 months of follow-up, risk difference and risk ratio
-
+- Risks under each treatment arm at 60 months of follow-up, risk difference and risk ratio
 
 ```{r}
+## Unstabilized
 cumIncTreated_de_60 <- cumIncTreated_de[length(cutTimes)] 
 
 cumIncPlacebo_de_60 <- cumIncPlacebo_de[length(cutTimes)]
@@ -401,9 +401,26 @@ results_de <- data.frame(cumIncTreated_de_60, cumIncPlacebo_de_60, de_rr, de_rd)
 knitr::kable(round(results_de, 2)) 
 ```
 
+```{r}
+## Stabilized
+
+cumIncTreated_des_60 <- cumIncTreated_des[length(cutTimes)] 
+
+cumIncPlacebo_des_60 <- cumIncPlacebo_des[length(cutTimes)]
+
+des_rr <- cumIncTreated_des_60 / cumIncPlacebo_des_60
+
+des_rd <- cumIncTreated_des_60 - cumIncPlacebo_des_60
+
+results_des <- data.frame(cumIncTreated_des_60, cumIncPlacebo_des_60, des_rr, des_rd)
+
+knitr::kable(round(results_des, 2)) 
+```
+
 - Cumulative incidence curves
 
 ```{r}
+
 plot(
   cutTimes, cumIncTreated_de, type = "s",
   ylim = c(0, 1), ylab = "Risk", xlab = "Month",
@@ -426,26 +443,26 @@ legend(
   cex = 1.2, pt.cex = 1.2, lwd = 2)
 ```
 
-## Total effect
+## Total effect estimation.
+
+For this effect, we will only use the unstabilized weights we calculated for censoring due to loss to follow-up `weights_cens`, but using `weights_cens_stab` is possible as well.
 
 Following equation (40) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
 
 ```{r}
 
-### Calculate cumulative hazards and cumulative incidence for the treated arm
-
-#### Unstabilized
+### Calculate hazards and cumulative incidence for the treated arm
 
 Treated_te_hazardP <-
   nonParametricCumHaz(
-    weights_te,
+    weights_cens,
     inputdata = longProstRed,
     grp = 1,
     outcomeProstate = TRUE)
 
 Treated_te_hazardO <-
   nonParametricCumHaz(
-    weights_te,
+    weights_cens,
     inputdata = longProstRed,
     grp = 1,
     outcomeProstate = FALSE)
@@ -455,18 +472,16 @@ cumIncTreated_te <-
 
 ### Calculate cumulative hazards and cumulative incidence for the placebo arm
 
-#### Unstabilized
-
 Placebo_te_hazardP <-
   nonParametricCumHaz(
-    weights_te,
+    weights_cens,
     inputdata = longProstRed,
     grp = 0,
     outcomeProstate = TRUE)
 
 Placebo_te_hazardO <-
   nonParametricCumHaz(
-    weights_te,
+    weights_cens,
     inputdata = longProstRed,
     grp = 0,
     outcomeProstate = FALSE)
@@ -476,8 +491,7 @@ cumIncPlacebo_te <-
 
 ```
 
-- Risks at 60 months of follow-up, risk difference and risk ratio
-
+- Risks under each treatment arm at 60 months of follow-up, risk difference and risk ratio
 
 ```{r}
 cumIncTreated_te_60 <- cumIncTreated_te[length(cutTimes)] 
@@ -520,6 +534,8 @@ legend(
 
 ## Total effect on death for other causes
 
+We will use the hazards obtained for the total effect, from the previous section.
+
 ```{r}
 cumIncTreated_te_comp <-
   nonParametricCumInc(Treated_te_hazardO, Treated_te_hazardP, competing = TRUE)
@@ -528,6 +544,8 @@ cumIncPlacebo_te_comp <-
   nonParametricCumInc(Placebo_te_hazardO, Placebo_te_hazardP, competing = TRUE)
 
 ```
+
+- Risks under each treatment arm at 60 months of follow-up, risk difference and risk ratio
 
 ```{r}
 cumIncTreated_te_comp_60 <- cumIncTreated_te_comp[length(cutTimes)] 
@@ -575,3 +593,11 @@ legend(
 ### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
 
 ### [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/2022_ser_competing_events/R/gform.html)
+
+# References
+
+- Young JG, Stensrud MJ, Tchetgen Tchetgen EJ, Hernán MA. A causal framework for classical statistical estimands in failure time settings with competing events. Statistics in Medicine 2020. [Paper link](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471) [Code](https://github.com/CausalInference/CompetingEvents_Young_SIM_2020)
+
+- Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable Effects for Causal Inference in the Presence of Competing Events. Journal of the American Statistical Association 2022. [Paper link](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
+
+
