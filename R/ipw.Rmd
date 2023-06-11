@@ -24,7 +24,7 @@ library(splines)
 library(here)
 source(here::here("R", "utility_functions.R"))
 
-prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
+prostate <- read.csv(here::here("R", "prostate_mats.csv"))
 prostate$allCause <- prostate$status != "alive"
 prostate$eventType <- as.factor(prostate$status)
 
@@ -167,7 +167,7 @@ longProstRed %>%
 
 - Calculate the cumulative probability over time:
 
-````{r}
+```{r}
 cumPredC <-
   unlist(aggregate(predC ~ longProstRed$patno, FUN = cumprod)$predC,
          use.names = F)
@@ -589,10 +589,206 @@ legend(
 
 ## Separable effects
 
+Following equation (11) from [Stensrud et al. Journal of the American Statistical Association. 2020](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
 
-### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
+To this matter, we will use the long format data set prepared before: `longProstRed`. 
 
-### [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/2022_ser_competing_events/R/gform.html)
+- Make one extra copy of the exposure `rx`, named `Orx`, to be used in the hazard of death due to other causes.
+
+```{r}
+longProstRed$Orx <- longProstRed$rx
+```
+
+- Fit conditional pooled logistic regression models
+
+```{r}
+plrFitP <-
+    glm(
+      prostateDeath ~ rx*(dtime + I(dtime ^ 2)+ I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+      data = longProstRed,
+      family = binomial()
+    )
+    
+plrFitO <-
+  glm(
+    otherDeath ~ Orx * (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat + hx + hgBinary,
+    data = longProstRed,
+    family = binomial()
+  )
+```
+  
+- Create three copies of the data. Data set construction where Ay and Ad = 1
+
+```{r}
+treated <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+
+treated$dtime <- rep(cutTimes, n)
+  
+treated$rx <- 1
+
+treated$Orx <- 1
+  
+```
+
+- Data set construction where Ay and Ad = 0
+
+```{r}
+placebo <-
+    baseline[rep(1:n, each = length(cutTimes)), ] #One row for each time
+  
+placebo$dtime <- rep(cutTimes, n)
+
+placebo$rx <- 0
+
+placebo$Orx <- 0
+
+```
+
+- Dataset construction where Ay = 1, Ad = 0
+
+```{r}
+treatAy <-
+    baseline[rep(1:n, each = length(cutTimes)), ]
+  
+treatAy$dtime <- rep(cutTimes, n)
+  
+treatAy$rx <- 1
+  
+treatAy$Orx <- 0
+```
+
+- Calculate hazards for each time interval in the three cloned data sets
+
+```{r}
+## For Ay = 1 and Ad = 1
+
+treated$hazardP <-
+    predict(plrFitP, newdata = treated, type = 'response')
+  
+treated$hazardO <-
+    predict(plrFitO, newdata = treated, type = 'response')
+  
+treated$s <- (1 - treated$hazardP) * (1 - treated$hazardO)
+
+## For Ay = 0, Ad = 0
+
+placebo$hazardP <-
+    predict(plrFitP, newdata = placebo, type = 'response')
+
+placebo$hazardO <-
+    predict(plrFitO, newdata = placebo, type = 'response')
+
+placebo$s <- (1 - placebo$hazardP) * (1 - placebo$hazardO)
+
+## For Ay = 1, Ad = 0
+
+treatAy$hazardP <-
+    predict(plrFitP, newdata = treatAy, type = 'response')
+  
+treatAy$hazardO <-
+    predict(plrFitO, newdata = treatAy, type = 'response')
+  
+treatAy$s <- (1 - treatAy$hazardP) * (1 - treatAy$hazardO)
+
+```
+
+- Calculate weights for censoring for lost to follow-up
+
+```{r}
+plrFitC <-
+  glm(
+    eventCens ~ Orx* (dtime + I(dtime ^ 2) + I(dtime ^ 3)) + normalAct + ageCat +
+      hx + hgBinary,
+    data = longProstRed,
+    family = binomial()
+  )
+  
+predC <- 1 - predict(plrFitC, newdata = longProstRed, type = 'response')
+
+# Create a new data frame with predicted hazard estimates from treated and 
+weightFrame <-
+  data.frame(
+    dtime = treated$dtime,
+    patno = treated$patno,
+    predOa1 = (1 - placebo$hazardO),
+    predOa0 = (1 - treated$hazardO)
+  )
+
+compWeightsO <-
+  merge(longProstRed,
+        weightFrame,
+        by = c('patno', 'dtime'),
+        all.x = TRUE, sort = FALSE)
+
+predOa0 <- compWeightsO$predOa0
+
+predOa1 <- compWeightsO$predOa1
+
+cum_pred_O_0 <-
+  unlist(aggregate(predOa0 ~ compWeightsO$patno, FUN = cumprod)$predOa0,
+         use.names = F) #unlist because aggregate creates list
+
+cum_pred_O_1 <-
+  unlist(aggregate(predOa1 ~ compWeightsO$patno, FUN = cumprod)$predOa1,
+         use.names = F) #unlist because aggregate creates list
+
+cum_pred_C <-
+  unlist(aggregate(predC ~ compWeightsO$patno, FUN = cumprod)$predC,
+         use.names = F) #unlist because aggregate creates list
+
+ipw_d <- rep(NA, length.out = length(cum_pred_C))
+
+# index time zeros
+
+t0 <- longProstRed$prostateDeath == 0
+
+ipw_d <- cum_pred_O_1 / cum_pred_O_0
+
+ipw_d <- cum_pred_O_1 / cum_pred_O_0
+
+ipw_cens <- 1 / cum_pred_C
+
+ipw_sep_eff <- ipw_d / cum_pred_C
+
+cumIncTreatAyIPW <-
+  discrete_cuminc_prost(ipw_sep_eff, longProstRed, grp = 1, follow_up = cutTimes)
+
+cumIncTreatedIPW <-
+  discrete_cuminc_prost(ipw_cens, longProstRed, grp = 1, follow_up = cutTimes)
+
+cumIncPlaceboIPW <-
+  discrete_cuminc_prost(ipw_cens, longProstRed, grp = 0, follow_up = cutTimes)
+
+
+
+```
+
+```{r}
+estimatesFullData <-
+  data.frame(cumIncTreatedIPW, cumIncTreatAyIPW, cumIncPlaceboIPW)
+
+knitr::kable(round(estimatesFullData[36,], 2))
+```
+
+
+- Cumulative incidence curves
+
+```{r}
+plot(cutTimes,cumIncTreatedIPW, type="s",ylim=c(0,1), ylab="Cumulative incidence", 
+     xlab="Months",lty=1,lwd=1,xlim=c(0,52))
+lines(cutTimes,cumIncPlaceboIPW, type="s",col=2,ylim=c(0,1),lwd=1,lty=1)
+lines(cutTimes,cumIncTreatAyIPW, type="s",col=3,ylim=c(0,1),lwd=1,lty=1)
+legend(x=0,y=1, c(expression('Pr('*'Y'['k+1']^{"a"*'=1'} *'=1' * ')' ),expression('Pr('*'Y'['k+1']^{"a"['Y']*'=1' * ' , ' * "a"['D']*'=0'} *'=1' * ')' ),expression('Pr('*'Y'['k+1']^{"a"*'=0'} *'=1' * ')' )),bty = "n",
+       col=c(1,3,2), lty=c(1,1,1),cex=1,pt.cex=1,lwd=1)
+```
+
+
+### [Go to: Data cleaning and setup here](https://palolili23.github.io/SER_competing_events_workshop//R/index.html)
+
+### [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/SER_competing_events_workshop//R/gform.html)
+
+### [Go to github repository](https://github.com/palolili23/SER_competing_events_workshop/)
 
 # References
 
@@ -600,4 +796,4 @@ legend(
 
 - Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable Effects for Causal Inference in the Presence of Competing Events. Journal of the American Statistical Association 2022. [Paper link](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
 
-
+- Rojas-Saunero LP, Young JG, Didelez V, Ikram MA, Swanson SA. Considering questions before methods in dementia research with competing events and causal goals. American Journal of Epidemiology. 2023. [Paper link](https://academic.oup.com/aje/advance-article/doi/10.1093/aje/kwad090/7120022) [Code](https://github.com/palolili23/competing_risks_dementia)

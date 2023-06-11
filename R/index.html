@@ -6,7 +6,7 @@
     <meta name="generator" content="pandoc" />
 
     
-        <meta name="date" content="2023-06-10" />
+        <meta name="date" content="2023-06-11" />
     
     <title>Causal inference with competing events</title>
 
@@ -1358,15 +1358,17 @@ events</a></h2>
     <div id="toc">
       <ul>
       <li><a href="#data-cleaning-and-setup" id="toc-data-cleaning-and-setup">Data cleaning and setup</a></li>
-      <li><a href="#go-to-direct-total-and-separable-effects-using-ipw" id="toc-go-to-direct-total-and-separable-effects-using-ipw">Go to:
-      Direct, total and separable effects, using IPW</a></li>
       <li><a href="#go-to-direct-total-and-separable-effects-using-g-formula" id="toc-go-to-direct-total-and-separable-effects-using-g-formula">Go
       to: Direct, total and separable effects, using G-formula</a></li>
+      <li><a href="#go-to-direct-total-and-separable-effects-using-ipw" id="toc-go-to-direct-total-and-separable-effects-using-ipw">Go to:
+      Direct, total and separable effects, using IPW</a></li>
+      <li><a href="#go-to-github-repository" id="toc-go-to-github-repository">Go to github repository</a></li>
       <li><a href="#references" id="toc-references">References</a></li>
+      <li><a href="#disclaimer" id="toc-disclaimer">Disclaimer</a></li>
       </ul>
     </div>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
-                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2023-06-10</p>
+                  <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2023-06-11</p>
           </div>
    </div>
      
@@ -1391,16 +1393,13 @@ tidyverse <a href="https://www.elenadudukina.com/post/competing-events/2022-11-2
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(splines)</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(here)</span></code></pre></div>
 <ul>
-<li>Download the data</li>
+<li>Download the data from the github repository, <a href="https://github.com/palolili23/2022_ser_competing_events/blob/main/R/prostate.csv">link
+here</a> . The example dataset is Byar &amp; Greene prostate cancer
+data. The data dictionary is available <a href="https://hbiostat.org/data/repo/Cprostate.html">here</a>.</li>
 </ul>
-<p>The example dataset is Byar &amp; Greene prostate cancer data,
-downloaded from the following <a href="https://hbiostat.org/data/">website</a>. The data dictionary
-available <a href="https://hbiostat.org/data/repo/Cprostate.html">here</a>.
-<strong>Note</strong>: Please note that there are many slightly
-different versions of this dataset, and the one in this website is not
-identical to the one used in Young et al. and Stensrud et al. For this
-workshop, we recommend using the version of this data that is located in
-this repository. <a href="https://github.com/palolili23/2022_ser_competing_events/blob/main/R/prostate.csv">Link</a></p>
+<p><strong>Note</strong>: Please note that there are many slightly
+different versions of this dataset, and the one in this workshop is not
+identical the one available the <a href="https://hbiostat.org/data/">hbiostat website</a>.</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>prostate <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;R&quot;</span>, <span class="st">&quot;prostate.csv&quot;</span>), <span class="at">sep =</span> <span class="st">&#39;;&#39;</span>)</span></code></pre></div>
 <ul>
 <li>Load utility functions, these are located in the github repository.
@@ -1909,13 +1908,17 @@ pooled over time models</li>
 <pre><code>## [1] 252</code></pre>
 </div>
 </div>
+<div id="go-to-direct-total-and-separable-effects-using-g-formula" class="section level1">
+<h1><a href="https://palolili23.github.io/SER_competing_events_workshop/R/gform.html">Go
+to: Direct, total and separable effects, using G-formula</a></h1>
+</div>
 <div id="go-to-direct-total-and-separable-effects-using-ipw" class="section level1">
-<h1><a href="https://palolili23.github.io/2022_ser_competing_events/R/ipw.html">Go
+<h1><a href="https://palolili23.github.io/SER_competing_events_workshop/R/ipw.html">Go
 to: Direct, total and separable effects, using IPW</a></h1>
 </div>
-<div id="go-to-direct-total-and-separable-effects-using-g-formula" class="section level1">
-<h1><a href="https://palolili23.github.io/2022_ser_competing_events/R/gform.html">Go
-to: Direct, total and separable effects, using G-formula</a></h1>
+<div id="go-to-github-repository" class="section level1">
+<h1><a href="https://github.com/palolili23//SER_competing_events_workshop/">Go
+to github repository</a></h1>
 </div>
 <div id="references" class="section level1">
 <h1>References</h1>
@@ -1928,6 +1931,47 @@ link</a> <a href="https://github.com/CausalInference/CompetingEvents_Young_SIM_2
 Effects for Causal Inference in the Presence of Competing Events.
 Journal of the American Statistical Association 2022. <a href="https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783">Paper
 link</a></p></li>
+<li><p>Rojas-Saunero LP, Young JG, Didelez V, Ikram MA, Swanson SA.
+Considering questions before methods in dementia research with competing
+events and causal goals. American Journal of Epidemiology. 2023. <a href="https://academic.oup.com/aje/advance-article/doi/10.1093/aje/kwad090/7120022">Paper
+link</a> <a href="https://github.com/palolili23/competing_risks_dementia">Code</a></p></li>
+</ul>
+</div>
+<div id="disclaimer" class="section level1">
+<h1>Disclaimer</h1>
+<p>This workshop was based on the <code>R code</code> from <a href="https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471">Young JG
+et al. Statistics in Medicine 2020</a> and <a href="https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783">Stensrud
+MJ et al. Journal of the American Statistical Association 2022</a>.
+Since both papers use the same data source and have similar procedures
+of data cleaning, we have unified several preliminary steps, specially
+in the <code>Data cleaning and setup</code> section, for better
+readability and comprehension in terms of the workshop. However, this
+means that results will not be identical to the results of these
+manuscripts.</p>
+<p>Some of the differences that arise in this version, compared to the
+code by Stensrud et al. are:</p>
+<ul>
+<li><p>DES is A=1 and placebo A=0</p></li>
+<li><p><code>cutTimes</code> is 60, instead of 101</p></li>
+<li><p><code>prostRed$hgBinary &lt;- prostRed$hg &lt; 12</code> instead
+of <code>prostRed$hg &lt; 10</code></p></li>
+<li><p>Since we include the following code:</p></li>
+</ul>
+<pre><code>longProstRed$prostateDeath[longProstRed$eventCens == 1] &lt;- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] &lt;- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] &lt;- NA
+</code></pre>
+<p><code>ipw_d &lt;- cum_pred_O_1 / cum_pred_O_0</code> was used instead
+of <code>ipw_d[!t0] &lt;- cum_pred_O_1[!t0] / cum_pred_O_0[!t0]</code>
+in the section of “Separable effects using IPW”.</p>
+<ul>
+<li><p>Several variables names have been modified compared to the code
+by Young et al. and by Stensrud et al.</p></li>
+<li><p>Hand calculations for the interaction terms between the exposure
+and time of follow-up were removed and indicators were included in the
+models.</p></li>
 </ul>
 </div>
 </div>
