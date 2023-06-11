@@ -316,7 +316,7 @@ summary(weights_de_stab)
 
 ## Direct effect estimation
 
-In this section we will apply utility functions that are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R)
+In this section we will apply utility functions that are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/SER_competing_events_workshop/blob/main/R/utility_functions.R)
 
 Following equation (37) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
 
@@ -784,7 +784,7 @@ legend(x=0,y=1, c(expression('Pr('*'Y'['k+1']^{"a"*'=1'} *'=1' * ')' ),expressio
 ```
 
 
-### [Go to: Data cleaning and setup here](https://palolili23.github.io/SER_competing_events_workshop//R/index.html)
+### [Go to: Data cleaning and setup here](https://palolili23.github.io/SER_competing_events_workshop/R/index.html)
 
 ### [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/SER_competing_events_workshop//R/gform.html)
 

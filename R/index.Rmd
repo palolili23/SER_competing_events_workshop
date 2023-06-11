@@ -30,7 +30,7 @@ library(splines)
 library(here)
 ```
 
-- Download the data from the github repository,  [link here](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/prostate.csv)
+- Download the data from the github repository,  [link here](https://github.com/palolili23/SER_competing_events_workshop/blob/main/R/prostate.csv)
 . The example dataset is Byar & Greene prostate cancer data. The data dictionary is available [here](https://hbiostat.org/data/repo/Cprostate.html).
 
 **Note**: Please note that there are many slightly different versions of this dataset, and the one in this workshop is not identical the one available the [hbiostat website](https://hbiostat.org/data/).
@@ -39,7 +39,7 @@ library(here)
 prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
 ```
 
-- Load utility functions, these are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/2022_ser_competing_events/blob/main/R/utility_functions.R)
+- Load utility functions, these are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/SER_competing_events_workshop/blob/main/R/utility_functions.R)
 
 ```{r}
 source(here::here("R", "utility_functions.R"))
@@ -180,12 +180,13 @@ n <- length(unique(longProstRed$patno))
 n
 ```
 
+# Next steps
 
-# [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/SER_competing_events_workshop/R/gform.html)
+## [Go to: Direct, total and separable effects, using G-formula](https://palolili23.github.io/SER_competing_events_workshop/R/gform.html)
 
-# [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/SER_competing_events_workshop/R/ipw.html)
+## [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/SER_competing_events_workshop/R/ipw.html)
 
-# [Go to github repository](https://github.com/palolili23//SER_competing_events_workshop/)
+## [Go to github repository](https://github.com/palolili23//SER_competing_events_workshop/)
 
 # References
 
