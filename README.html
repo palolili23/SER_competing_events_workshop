@@ -403,6 +403,43 @@ practical examples and R code provided.</p>
 scripts</a></p></li>
 </ul>
 </div>
+<div id="disclaimer" class="section level2">
+<h2>Disclaimer:</h2>
+<p>This workshop was based on the <code>R code</code> from <a href="https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471">Young JG
+et al. Statistics in Medicine 2020</a> and <a href="https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783">Stensrud
+MJ et al. Journal of the American Statistical Association 2022</a>.
+Since both papers use the same data source and have similar procedures
+of data cleaning, we have unified several preliminary steps, specially
+in the <code>Data cleaning and setup</code> section, for better
+readability and comprehension in terms of the workshop. However, this
+means that results will not be identical to the results of these
+manuscripts.</p>
+<p>Some of the differences that arise in this version, compared to the
+code by Stensrud et al. are:</p>
+<ul>
+<li><p>DES is A=1 and placebo A=0</p></li>
+<li><p><code>cutTimes</code> is 60, instead of 101</p></li>
+<li><p><code>prostRed$hgBinary &lt;- prostRed$hg &lt; 12</code> instead
+of <code>prostRed$hg &lt; 10</code></p></li>
+<li><p>Since we include the following code:</p></li>
+</ul>
+<pre><code>longProstRed$prostateDeath[longProstRed$eventCens == 1] &lt;- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] &lt;- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] &lt;- NA
+</code></pre>
+<p><code>ipw_d &lt;- cum_pred_O_1 / cum_pred_O_0</code> was used instead
+of
+<code>ipw_d[!t0] &lt;- cum_pred_O_1[!t0] / cum_pred_O_0[!t0]</code></p>
+<ul>
+<li><p>Several variables names have been modified compared to the code
+by Young et al. and by Stensrud et al.</p></li>
+<li><p>Hand calculations for the interaction terms between the exposure
+and time of follow-up were removed and indicators were included in the
+models.</p></li>
+</ul>
+</div>
 </div>
 
 

@@ -18,7 +18,7 @@ library(splines)
 library(here)
 source(here::here("R", "utility_functions.R"))
 
-prostate <- read.csv(here::here("R", "prostate.csv"), sep = ';')
+prostate <- read.csv(here::here("R", "prostate_mats.csv"))
 prostate$allCause <- prostate$status != "alive"
 prostate$eventType <- as.factor(prostate$status)
 
@@ -138,14 +138,57 @@ placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 
 ## Direct effect
 
+We will implement the following estimator, wrapped as the function `calculateCumInc`.
+
+```{r}
+calculateCumInc <-
+  function(inputData,
+           timepts = cutTimes,
+           competing = FALSE) {
+    cumulativeIncidence <-
+      matrix(NA, ncol = length(unique(inputData$patno)), nrow = length(cutTimes))
+    # Insert the event probabilities at the first time interval:
+    cumulativeIncidence[1,] <-
+      inputData[inputData$dtime == 0,]$hazardP * inputData[inputData$dtime ==
+                                                             0,]$hazardO
+    # Create a matrix compatible with 'cumulativeIncidence' with survival probabilities at each time
+    survivalProb <-
+      t(aggregate(s ~ patno, data = inputData, FUN = cumprod)$s) #split the long data into subsets per subject
+    for (i in 2:length(cutTimes)) {
+      subInputDataP <-
+        inputData[inputData$dtime == (i - 1),]$hazardP #OBS: dtime starts at 0
+      subInputDataO <-
+        (1 - inputData[inputData$dtime == (i - 1),]$hazardO) #OBS: dtime starts at 0
+      if (!competing)
+        cumulativeIncidence[i,] <-
+        subInputDataO *  subInputDataP * survivalProb[(i - 1),] # OBS: survivalProb entry i is time point i-1
+      else
+        cumulativeIncidence[i,] <-
+        (1 - subInputDataO) * survivalProb[(i - 1),]
+    }
+    meanCumulativeIncidence <-
+      rowMeans(apply(cumulativeIncidence, MARGIN = 2, cumsum)) #rowMeans(cumulativeIncidence)
+    return(meanCumulativeIncidence)
+  }
+
+```
+
+
 ```{r}
 cumIncTreated <- calculateCumInc(treated)#a=1
 cumIncPlacebo <- calculateCumInc(placebo)#a=0
 
-gcompcderr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] 
-gcompcderd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)] 
-print(gcompcderr)
-print(gcompcderd)
+cumIncTreated_de_60 <- cumIncTreated[length(cutTimes)]
+
+cumIncPlacebo_de_60 <- cumIncPlacebo[length(cutTimes)]
+
+de_rr <- cumIncTreated_de_60 / cumIncPlacebo_de_60
+
+de_rd <- cumIncTreated_de_60 - cumIncPlacebo_de_60
+
+results_de <- data.frame(cumIncTreated_de_60, cumIncPlacebo_de_60, de_rr, de_rd)
+
+knitr::kable(round(results_de, 2)) 
 ```
 
 ## Total effect
@@ -165,32 +208,41 @@ placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 - Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula
 
 ```{r}
-cumIncTreated <- calculateCumInc(treated)#a=1
-cumIncPlacebo <- calculateCumInc(placebo)#a=0
+cumIncTreated_te <- calculateCumInc(treated)#a=1
+cumIncPlacebo_te <- calculateCumInc(placebo)#a=0
 
-gcomptotrr<-cumIncTreated[length(cutTimes)]/cumIncPlacebo[length(cutTimes)] 
-gcomptotrd<-cumIncTreated[length(cutTimes)]-cumIncPlacebo[length(cutTimes)]
-print(gcomptotrr)
-print(gcomptotrd)
+cumIncTreated_te_60 <- cumIncTreated_te[length(cutTimes)] 
+
+cumIncPlacebo_te_60 <- cumIncPlacebo_te[length(cutTimes)]
+
+te_rr <- cumIncTreated_te_60 / cumIncPlacebo_te_60
+
+te_rd <- cumIncTreated_te_60 - cumIncPlacebo_te_60
+
+results_te <- data.frame(cumIncTreated_te_60, cumIncPlacebo_te_60, te_rr, te_rd)
+
+knitr::kable(round(results_te, 2))
 ```
 
 ## Total effect of death on other causes
 
 ```{r}
 # parametric g-formula estimate of the risk of the competing event itself
-cumIncTreatedcomp <- calculateCumInc(treated, competing = TRUE)#a=1
+cumIncTreated_te_comp <- calculateCumInc(treated, competing = TRUE)#a=1
 
-cumIncPlacebocomp <- calculateCumInc(placebo, competing = TRUE)#a=0
+cumIncPlacebo_te_comp <- calculateCumInc(placebo, competing = TRUE)#a=0
 
-gcompcomprr <-
-  cumIncTreatedcomp[length(cutTimes)] / cumIncPlacebocomp[length(cutTimes)]
+cumIncTreated_te_comp_60 <- cumIncTreated_te_comp[length(cutTimes)] 
 
-gcompcomprd <-
-  cumIncTreatedcomp[length(cutTimes)] - cumIncPlacebocomp[length(cutTimes)]
+cumIncPlacebo_te_comp_60 <- cumIncPlacebo_te_comp[length(cutTimes)]
 
+te_comp_rr <- cumIncTreated_te_comp_60 / cumIncPlacebo_te_comp_60
 
-print(gcompcomprr)
-print(gcompcomprd)
+te_comp_rd <- cumIncTreated_te_comp_60 - cumIncPlacebo_te_comp_60
+
+results_te_comp <- data.frame(cumIncTreated_te_comp_60, cumIncPlacebo_te_comp_60, te_comp_rr, te_comp_rd)
+
+knitr::kable(round(results_te_comp, 2))
 ```
 
 ## Separable effects
@@ -223,7 +275,9 @@ plrFitO <-
   )
 ```
   
-- Create three copies of the data. Data set construction where Ay and Ad = 1
+Create three copies of the data:
+
+- Data set construction where Ay and Ad = 1
 
 ```{r}
 treated <-
@@ -333,9 +387,11 @@ legend(x = 0, y = 1,
 ```
 
 
-### [Go to: Data cleaning and setup here](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
+### [Go to: Data cleaning and setup here](https://palolili23.github.io/SER_competing_events_workshop/R/index.html)
 
-### [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/2022_ser_competing_events/R/ipw.html)
+### [Go to: Direct, total and separable effects, using IPW](https://palolili23.github.io/SER_competing_events_workshop/R/ipw.html)
+
+### [Go to github repository](https://github.com/palolili23/SER_competing_events_workshop)
 
 # References
 
@@ -343,4 +399,4 @@ legend(x = 0, y = 1,
 
 - Stensrud MJ, Young JG, Didelez V, Robins JM, Hernán MA. Separable Effects for Causal Inference in the Presence of Competing Events. Journal of the American Statistical Association 2022. [Paper link](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783)
 
-
+- Rojas-Saunero LP, Young JG, Didelez V, Ikram MA, Swanson SA. Considering questions before methods in dementia research with competing events and causal goals. American Journal of Epidemiology. 2023. [Paper link](https://academic.oup.com/aje/advance-article/doi/10.1093/aje/kwad090/7120022) [Code](https://github.com/palolili23/competing_risks_dementia)

@@ -70,3 +70,23 @@ calculateCumInc <-
       rowMeans(apply(cumulativeIncidence, MARGIN = 2, cumsum)) #rowMeans(cumulativeIncidence)
     return(meanCumulativeIncidence)
   }
+
+discrete_cuminc_prost <- function(weight_vector, inputdata, grp=0, outcome_y=TRUE,follow_up=1:max_time){
+  event_vec <- rep(NA, length.out=length(follow_up))
+  counter <- 1 
+  # count number of individuals in grp (that is, we cound those who were present at baseline)
+  n_grp <- sum(inputdata$dtime==0 & inputdata$rx==grp)
+  for(i in follow_up){
+    if(outcome_y){
+      indices <- inputdata$dtime==i & inputdata$rx == grp & inputdata$eventCens==0 & inputdata$otherDeath==0 
+      eventIndicator <- indices & inputdata$prostateDeath==1 
+    }else{
+      indices <- inputdata$dtime==i & inputdata$rx == grp & inputdata$eventCens==0  
+      eventIndicator <- indices &  inputdata$otherDeath==1
+    }
+    event_vec[counter] <- sum(weight_vector[eventIndicator]) / n_grp
+    counter <- counter+1
+  }
+  output_cuminc <- cumsum(event_vec)
+  return(output_cuminc)
+}

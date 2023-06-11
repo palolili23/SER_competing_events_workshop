@@ -24,3 +24,31 @@ July 6, 2023
 
 - [Guided scripts](https://palolili23.github.io/2022_ser_competing_events/R/index.html)
 
+## Disclaimer:
+
+This workshop was based on the `R code` from [Young JG et al. Statistics in Medicine 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471) and [Stensrud MJ et al. Journal of the American Statistical Association 2022](https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1765783). Since both papers use the same data source and have similar procedures of data cleaning, we have unified several preliminary steps, specially in the `Data cleaning and setup` section, for better readability and comprehension in terms of the workshop. However, this means that results will not be identical to the results of these manuscripts.
+
+Some of the differences that arise in this version, compared to the code by Stensrud et al. are:
+
+- DES is A=1 and placebo A=0
+
+- `cutTimes` is 60, instead of 101
+
+- `prostRed$hgBinary <- prostRed$hg < 12` instead of `prostRed$hg < 10` 
+
+- Since we include the following code:
+
+```
+longProstRed$prostateDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$otherDeath[longProstRed$eventCens == 1] <- NA
+
+longProstRed$prostateDeath[longProstRed$otherDeath == 1] <- NA
+
+```
+
+`ipw_d <- cum_pred_O_1 / cum_pred_O_0` was used instead of `ipw_d[!t0] <- cum_pred_O_1[!t0] / cum_pred_O_0[!t0]`
+
+- Several variables names have been modified compared to the code by Young et al. and by Stensrud et al.
+
+- Hand calculations for the interaction terms between the exposure and time of follow-up were removed and indicators were included in the models. 
