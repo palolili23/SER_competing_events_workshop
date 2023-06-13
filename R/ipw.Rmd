@@ -24,7 +24,7 @@ library(splines)
 library(here)
 source(here::here("R", "utility_functions.R"))
 
-prostate <- read.csv(here::here("R", "prostate_mats.csv"))
+prostate <- read.csv(here::here("R", "prostate.csv"))
 prostate$allCause <- prostate$status != "alive"
 prostate$eventType <- as.factor(prostate$status)
 
@@ -84,6 +84,8 @@ n <- length(unique(longProstRed$patno))
 
 ```
 
+
+*Note:* Most of the code in this tutorial is written in R base, to mimic the original code from the published papers (see *References*). Dr. Elena Dudukina has a version of this code in R tidyverse [here](https://www.elenadudukina.com/post/competing-events/2022-11-24-competing-events/).
 
 ## Conditional pooled logistic models
 
@@ -316,7 +318,52 @@ summary(weights_de_stab)
 
 ## Direct effect estimation
 
-In this section we will apply utility functions that are located in the github repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/SER_competing_events_workshop/blob/main/R/utility_functions.R)
+In this section and the following ones, we will apply the `nonParametricCumHaz` and `nonParametricCumInc` functions from the `utility_functions` script available in this repository. These functions are necessary to calculate hazards and cumulative incidence. [Link](https://github.com/palolili23/SER_competing_events_workshop/blob/main/R/utility_functions.R)
+
+The functions look like this:
+
+```{r}
+nonParametricCumHaz <-
+  function(weightVector,
+           inputdata,
+           grp,
+           outcomeProstate = TRUE) {
+    outputHazards <- rep(NA, length.out = length(cutTimes))
+    counter <- 1
+    for (i in cutTimes) {
+      if (outcomeProstate) {
+        indices <-
+          inputdata$dtime == i &
+          inputdata$rx == grp &
+          inputdata$eventCens == 0 & inputdata$otherDeath == 0
+        eventIndicator <- indices & inputdata$prostateDeath == 1
+      } else{
+        indices <-
+          inputdata$dtime == i & inputdata$rx == grp & inputdata$eventCens == 0
+        eventIndicator <- indices & inputdata$otherDeath == 1
+      }
+      outputHazards[counter] <-
+        sum(weightVector[eventIndicator]) / sum(weightVector[indices])
+      counter <- counter + 1
+    }
+    return(outputHazards)
+  }
+
+nonParametricCumInc <- function(hazard1, hazard2, competing = FALSE) {
+  inc <- rep(NA, length.out = length(cutTimes))
+  cumulativeSurvival <- c(1, cumprod((1 - hazard1) * (1 - hazard2)))
+  counter <- 1
+  for (i in 1:length(cutTimes)) {
+    if (!competing) {
+      inc[i] <- hazard1[i] * (1 - hazard2[i]) * cumulativeSurvival[i]
+    } else{
+      inc[i] <- hazard1[i] * cumulativeSurvival[i]
+    }
+  }
+  cumInc <- cumsum(inc)
+  return(cumInc)
+}
+```
 
 Following equation (37) from [Young et al. Statistics in Medicine. 2020](https://onlinelibrary.wiley.com/doi/abs/10.1002/sim.8471).
 
@@ -751,6 +798,34 @@ ipw_cens <- 1 / cum_pred_C
 
 ipw_sep_eff <- ipw_d / cum_pred_C
 
+```
+
+Last, we will use the function `discrete_cuminc_prost`, from the `utility_functions` script available in this repository.
+
+```{r}
+discrete_cuminc_prost <- function(weight_vector, inputdata, grp=0, outcome_y=TRUE,follow_up=1:max_time){
+  event_vec <- rep(NA, length.out=length(follow_up))
+  counter <- 1 
+  # count number of individuals in grp (that is, we cound those who were present at baseline)
+  n_grp <- sum(inputdata$dtime==0 & inputdata$rx==grp)
+  for(i in follow_up){
+    if(outcome_y){
+      indices <- inputdata$dtime==i & inputdata$rx == grp & inputdata$eventCens==0 & inputdata$otherDeath==0 
+      eventIndicator <- indices & inputdata$prostateDeath==1 
+    }else{
+      indices <- inputdata$dtime==i & inputdata$rx == grp & inputdata$eventCens==0  
+      eventIndicator <- indices &  inputdata$otherDeath==1
+    }
+    event_vec[counter] <- sum(weight_vector[eventIndicator]) / n_grp
+    counter <- counter+1
+  }
+  output_cuminc <- cumsum(event_vec)
+  return(output_cuminc)
+}
+
+```
+
+```{r}
 cumIncTreatAyIPW <-
   discrete_cuminc_prost(ipw_sep_eff, longProstRed, grp = 1, follow_up = cutTimes)
 
@@ -761,10 +836,6 @@ cumIncPlaceboIPW <-
   discrete_cuminc_prost(ipw_cens, longProstRed, grp = 0, follow_up = cutTimes)
 
 
-
-```
-
-```{r}
 estimatesFullData <-
   data.frame(cumIncTreatedIPW, cumIncTreatAyIPW, cumIncPlaceboIPW)
 

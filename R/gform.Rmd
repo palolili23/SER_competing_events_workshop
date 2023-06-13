@@ -16,9 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(Hmisc)
 library(splines)
 library(here)
-source(here::here("R", "utility_functions.R"))
+library(tidyverse)
 
-prostate <- read.csv(here::here("R", "prostate_mats.csv"))
+prostate <- read.csv(here::here("R", "prostate.csv"))
 prostate$allCause <- prostate$status != "alive"
 prostate$eventType <- as.factor(prostate$status)
 
@@ -136,9 +136,27 @@ placebo$hazardO <- 0
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
 ```
 
+- Glimpse of "treated" data:
+
+```{r}
+treated %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
+```
+
+- Glimpse of "placebo" data:
+
+```{r}
+placebo %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
+```
 ## Direct effect
 
-We will implement the following estimator, wrapped as the function `calculateCumInc`.
+We will implement the following estimator, wrapped as the function `calculateCumInc` from the `utility_functions` script available in this repository.
+
 
 ```{r}
 calculateCumInc <-
@@ -203,6 +221,24 @@ treated$s <- (1-treated$hazardP) * (1-treated$hazardO)
 placebo$hazardO <- predict(plrFitO, newdata = placebo, type = 'response')
 
 placebo$s <- (1-placebo$hazardP) * (1-placebo$hazardO)
+```
+
+- Glimpse of "treated" data:
+
+```{r}
+treated %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
+```
+
+- Glimpse of "placebo" data:
+
+```{r}
+placebo %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
 ```
 
 - Calculate risks and corresponding treatment effects (RR/RD) by end of follow-up using parametric g-formula
@@ -351,6 +387,33 @@ treatAy$hazardO <-
   
 treatAy$s <- (1 - treatAy$hazardP) * (1 - treatAy$hazardO)
 
+```
+
+- Glimpse of "treated" data:
+
+```{r}
+treated %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, Orx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
+```
+
+- Glimpse of "placebo" data:
+
+```{r}
+placebo %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, Orx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
+```
+
+- Glimpse of "treatAy" data:
+
+```{r}
+treatAy %>% 
+  filter(patno %in% c(489)) %>% select(
+    patno, dtime, rx, Orx, hazardP, hazardO, s
+  ) %>% slice(1:5, 55:59) %>%  knitr::kable()
 ```
 
 - Calculate cumulative incidence

@@ -39,8 +39,6 @@ nonParametricCumInc <- function(hazard1, hazard2, competing = FALSE) {
   return(cumInc)
 }
 
-### Separable effects code
-
 calculateCumInc <-
   function(inputData,
            timepts = cutTimes,
