@@ -103,7 +103,7 @@ plrFitO <-
 
 ```
 
-## Create expanded datasets
+## Direct effect
 
 - Create two expanded datasets so that hazards given A=1 can be computed for all subjects (even those with A=0), and viceversa (everyone has A = 0). In an RCT this is not necessary, could stratify models above and this step by treatment arm.
 
@@ -153,7 +153,6 @@ placebo %>%
     patno, dtime, rx, hazardP, hazardO, s
   ) %>% slice(1:5, 55:59) %>%  knitr::kable()
 ```
-## Direct effect
 
 We will implement the following estimator, wrapped as the function `calculateCumInc` from the `utility_functions` script available in this repository.
 
